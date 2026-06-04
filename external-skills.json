@@ -1,0 +1,232 @@
+[
+  {
+    "inspect_before_use": false,
+    "install_hint": "Read only; not installed as a skill.",
+    "name": "OpenAI Codex Agent Skills docs",
+    "phase": "registration",
+    "provider": "openai-docs",
+    "purpose": "Canonical skill format, save locations, activation behavior, and registration guidance.",
+    "required": true,
+    "url": "https://developers.openai.com/codex/skills"
+  },
+  {
+    "inspect_before_use": false,
+    "install_hint": "Read only; not installed as a skill.",
+    "name": "Codex Subagents docs",
+    "phase": "subagents",
+    "provider": "openai-docs",
+    "purpose": "Parallel subagent workflow design and delegation constraints.",
+    "required": true,
+    "url": "https://developers.openai.com/codex/subagents"
+  },
+  {
+    "inspect_before_use": false,
+    "install_hint": "Read only; not installed as a skill.",
+    "name": "Codex AGENTS.md docs",
+    "phase": "context",
+    "provider": "openai-docs",
+    "purpose": "Project instruction discovery and persistent repository guidance.",
+    "required": true,
+    "url": "https://developers.openai.com/codex/guides/agents-md"
+  },
+  {
+    "inspect_before_use": false,
+    "install_hint": "Read only; not installed as a skill.",
+    "name": "Codex GitHub code review docs",
+    "phase": "review-comments",
+    "provider": "openai-docs",
+    "purpose": "Codex GitHub review behavior and review guideline grounding.",
+    "required": false,
+    "url": "https://developers.openai.com/codex/integrations/github"
+  },
+  {
+    "inspect_before_use": false,
+    "install_hint": "$skill-installer <skill-name> or $skill-installer install <GitHub directory URL>",
+    "name": "OpenAI skills catalog",
+    "phase": "installation",
+    "provider": "openai",
+    "purpose": "Official catalog for curated/system/experimental Codex skills.",
+    "required": true,
+    "url": "https://github.com/openai/skills"
+  },
+  {
+    "inspect_before_use": true,
+    "install_hint": "$skill-installer skill-creator when not already installed.",
+    "name": "skill-creator",
+    "phase": "skill-authoring",
+    "provider": "openai",
+    "purpose": "Create or refine custom skills.",
+    "required": false,
+    "url": "https://github.com/openai/skills/blob/main/skills/.system/skill-creator/SKILL.md"
+  },
+  {
+    "inspect_before_use": true,
+    "install_hint": "$skill-installer gh-address-comments",
+    "name": "gh-address-comments",
+    "phase": "review-comments",
+    "provider": "openai",
+    "purpose": "Read unresolved GitHub PR review comments and convert accepted feedback into TODOs.",
+    "required": true,
+    "url": "https://github.com/openai/skills/blob/main/skills/.curated/gh-address-comments/SKILL.md"
+  },
+  {
+    "inspect_before_use": true,
+    "install_hint": "$skill-installer define-goal",
+    "name": "define-goal",
+    "phase": "goal-definition",
+    "provider": "openai",
+    "purpose": "Turn broad requirements into measurable objectives, constraints, and stop conditions.",
+    "required": true,
+    "url": "https://github.com/openai/skills/blob/main/skills/.curated/define-goal/SKILL.md"
+  },
+  {
+    "inspect_before_use": true,
+    "install_hint": "$skill-installer install https://github.com/openai/skills/tree/main/skills/.experimental/create-plan",
+    "name": "create-plan",
+    "phase": "planning",
+    "provider": "openai-experimental",
+    "purpose": "Create a structured implementation plan before TODO creation; experimental output must be reviewed critically.",
+    "required": false,
+    "url": "https://github.com/openai/skills/blob/main/skills/.experimental/create-plan/SKILL.md"
+  },
+  {
+    "inspect_before_use": true,
+    "install_hint": "$skill-installer openai-docs",
+    "name": "openai-docs",
+    "phase": "source-grounding",
+    "provider": "openai",
+    "purpose": "Ground OpenAI API, Codex, and Agents SDK decisions in official OpenAI docs.",
+    "required": false,
+    "url": "https://github.com/openai/skills/blob/main/skills/.curated/openai-docs/SKILL.md"
+  },
+  {
+    "inspect_before_use": true,
+    "install_hint": "Install or reference this SKILL.md after inspection.",
+    "name": "using-agent-skills",
+    "phase": "skill-selection",
+    "provider": "addyosmani/agent-skills",
+    "purpose": "Meta skill selection and phase mapping.",
+    "required": false,
+    "url": "https://github.com/addyosmani/agent-skills/blob/main/skills/using-agent-skills/SKILL.md"
+  },
+  {
+    "inspect_before_use": true,
+    "install_hint": "Install or reference this SKILL.md after inspection.",
+    "name": "spec-driven-development",
+    "phase": "requirements",
+    "provider": "addyosmani/agent-skills",
+    "purpose": "Turn requirements into a concrete spec before code.",
+    "required": false,
+    "url": "https://github.com/addyosmani/agent-skills/blob/main/skills/spec-driven-development/SKILL.md"
+  },
+  {
+    "inspect_before_use": true,
+    "install_hint": "Install or reference this SKILL.md after inspection.",
+    "name": "source-driven-development",
+    "phase": "source-grounding",
+    "provider": "addyosmani/agent-skills",
+    "purpose": "Ground framework/library decisions in official documentation and source evidence.",
+    "required": true,
+    "url": "https://github.com/addyosmani/agent-skills/blob/main/skills/source-driven-development/SKILL.md"
+  },
+  {
+    "inspect_before_use": true,
+    "install_hint": "Install or reference this SKILL.md after inspection.",
+    "name": "planning-and-task-breakdown",
+    "phase": "planning",
+    "provider": "addyosmani/agent-skills",
+    "purpose": "Break specs into small verifiable TODOs with acceptance criteria and dependencies.",
+    "required": true,
+    "url": "https://github.com/addyosmani/agent-skills/blob/main/skills/planning-and-task-breakdown/SKILL.md"
+  },
+  {
+    "inspect_before_use": true,
+    "install_hint": "Install or reference this SKILL.md after inspection.",
+    "name": "incremental-implementation",
+    "phase": "implementation",
+    "provider": "addyosmani/agent-skills",
+    "purpose": "Implement one thin vertical slice at a time with safe defaults.",
+    "required": true,
+    "url": "https://github.com/addyosmani/agent-skills/blob/main/skills/incremental-implementation/SKILL.md"
+  },
+  {
+    "inspect_before_use": true,
+    "install_hint": "Use the already installed local test-driven-development skill, or inspect/install this linked SKILL.md.",
+    "name": "test-driven-development",
+    "phase": "validation",
+    "provider": "addyosmani/agent-skills or local installed skill",
+    "purpose": "Use red-green-refactor and test evidence for each TODO.",
+    "required": true,
+    "url": "https://github.com/addyosmani/agent-skills/blob/main/skills/test-driven-development/SKILL.md"
+  },
+  {
+    "inspect_before_use": true,
+    "install_hint": "Install or reference this SKILL.md after inspection.",
+    "name": "debugging-and-error-recovery",
+    "phase": "debugging",
+    "provider": "addyosmani/agent-skills",
+    "purpose": "Reproduce, localize, reduce, fix, and guard after validation failure.",
+    "required": true,
+    "url": "https://github.com/addyosmani/agent-skills/blob/main/skills/debugging-and-error-recovery/SKILL.md"
+  },
+  {
+    "inspect_before_use": true,
+    "install_hint": "Install or reference this SKILL.md after inspection.",
+    "name": "code-review-and-quality",
+    "phase": "review",
+    "provider": "addyosmani/agent-skills",
+    "purpose": "Run multi-axis review before accepting a TODO or merge.",
+    "required": true,
+    "url": "https://github.com/addyosmani/agent-skills/blob/main/skills/code-review-and-quality/SKILL.md"
+  },
+  {
+    "inspect_before_use": true,
+    "install_hint": "Install or reference this SKILL.md after inspection.",
+    "name": "documentation-and-adrs",
+    "phase": "documentation",
+    "provider": "addyosmani/agent-skills",
+    "purpose": "Document architecture decisions, APIs, behavior changes, and rationale.",
+    "required": true,
+    "url": "https://github.com/addyosmani/agent-skills/blob/main/skills/documentation-and-adrs/SKILL.md"
+  },
+  {
+    "inspect_before_use": true,
+    "install_hint": "Install or reference this SKILL.md after inspection.",
+    "name": "code-simplification",
+    "phase": "improvement",
+    "provider": "addyosmani/agent-skills",
+    "purpose": "Preserve behavior while reducing complexity and maintenance cost.",
+    "required": false,
+    "url": "https://github.com/addyosmani/agent-skills/blob/main/skills/code-simplification/SKILL.md"
+  },
+  {
+    "inspect_before_use": true,
+    "install_hint": "Install or reference this SKILL.md after inspection.",
+    "name": "security-and-hardening",
+    "phase": "security-review",
+    "provider": "addyosmani/agent-skills",
+    "purpose": "Review auth, user input, secrets, dependency, and data handling risks.",
+    "required": false,
+    "url": "https://github.com/addyosmani/agent-skills/blob/main/skills/security-and-hardening/SKILL.md"
+  },
+  {
+    "inspect_before_use": true,
+    "install_hint": "Install or reference this SKILL.md after inspection.",
+    "name": "performance-optimization",
+    "phase": "performance-review",
+    "provider": "addyosmani/agent-skills",
+    "purpose": "Run measure-first performance critique and improvement planning.",
+    "required": false,
+    "url": "https://github.com/addyosmani/agent-skills/blob/main/skills/performance-optimization/SKILL.md"
+  },
+  {
+    "inspect_before_use": true,
+    "install_hint": "Install or reference this SKILL.md after inspection.",
+    "name": "api-and-interface-design",
+    "phase": "interface-review",
+    "provider": "addyosmani/agent-skills",
+    "purpose": "API boundary and interface critique.",
+    "required": false,
+    "url": "https://github.com/addyosmani/agent-skills/blob/main/skills/api-and-interface-design/SKILL.md"
+  }
+]

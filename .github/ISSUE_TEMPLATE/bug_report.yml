@@ -1,0 +1,42 @@
+name: Bug report
+description: Report a broken helper script, skill workflow, or documentation issue.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What failed?
+      placeholder: Describe the observed behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Include commands, OS, Python version, and relevant files.
+      render: bash
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or validation output
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks performed
+      options:
+        - label: I ran `python -m compileall -q -f skills/review-driven-development/scripts`
+        - label: I ran `python skills/review-driven-development/scripts/validate_skill.py --skill-dir skills/review-driven-development`
+        - label: I ran `python skills/review-driven-development/scripts/self_test.py`
+        - label: I ran `pytest -q`

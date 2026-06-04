@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: GitHub setup guide
+    url: https://github.com/YOUR_GITHUB_USERNAME/review-driven-development/blob/main/docs/github-setup.md
+    about: Read the repository setup and publishing checklist.

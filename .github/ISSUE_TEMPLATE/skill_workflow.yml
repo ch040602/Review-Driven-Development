@@ -1,0 +1,39 @@
+name: Skill workflow review
+description: Request a review of a proposed review-driven-development workflow change.
+title: "[Workflow]: "
+labels: [workflow, review]
+body:
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Workflow change
+      description: What workflow step changes?
+    validations:
+      required: true
+  - type: textarea
+    id: affected-files
+    attributes:
+      label: Affected files
+      description: List SKILL.md, references, scripts, tests, or docs that change.
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation plan
+      description: How will the change be tested?
+    validations:
+      required: true
+  - type: checkboxes
+    id: gates
+    attributes:
+      label: Gate preservation
+      options:
+        - label: Critical-only subagent behavior is preserved
+          required: true
+        - label: One active TODO rule is preserved
+          required: true
+        - label: TODO completion gates are not weakened
+          required: true
+        - label: Documentation policy is updated or unchanged
+          required: true

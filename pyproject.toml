@@ -1,0 +1,15 @@
+[project]
+name = "review-driven-development"
+version = "0.1.0"
+description = "Codex custom skill for review-driven development workflows"
+requires-python = ">=3.10"
+readme = "README.md"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"

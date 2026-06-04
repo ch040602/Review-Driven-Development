@@ -1,0 +1,182 @@
+# Workflow / 작업 흐름
+
+## Phase 0. Intake and project state
+
+1. Load `.codex/review-driven-development/defaults.json` if it exists.
+2. If defaults are missing, gather context first, then ask first-run questions.
+3. Save exact answers to `profile.md` and parsed defaults to `defaults.json`.
+
+Helper scripts:
+
+```text
+rdd_state.py
+context_inventory.py
+requirement_analyzer.py
+```
+
+## Phase 1. Source/file-driven requirements analysis
+
+Analyze:
+
+```text
+user prompt
+uploaded/attached files
+AGENTS.md
+README*
+docs/**/*.md
+source files
+tests
+build/package files
+CSV/log/data files
+PDF/DOCX files if present through corresponding skills
+```
+
+Output:
+
+```text
+requirement packet
+language/runtime options with pros/cons
+implementation method options with pros/cons
+existing code reuse/review/refactor options with pros/cons
+validation strategy options
+documentation strategy options
+```
+
+## Phase 2. Parallel critical-only subagent debate
+
+Spawn as many parallel critics as useful:
+
+```text
+requirements critic
+language/runtime critic
+architecture critic
+existing-code reuse/refactor critic
+test/TDD critic
+security/risk critic
+documentation critic
+data/CSV critic
+performance/efficiency critic
+accuracy/evaluation critic
+```
+
+All subagents are critical-only. They return findings, not decisions.
+
+Helper scripts:
+
+```text
+subagent_brief_builder.py
+critic_ledger.py
+```
+
+## Phase 3. Main-agent decision and TODO generation
+
+The main agent classifies every finding:
+
+```text
+accept
+reject
+defer
+needs_user_input
+```
+
+Only accepted findings become TODO seeds.
+
+Helper scripts:
+
+```text
+critic_ledger.py
+todo_manager.py
+```
+
+## Phase 4. Sequential TODO execution
+
+Rule: exactly one TODO may be `in_progress`.
+
+Per TODO:
+
+1. Confirm acceptance criteria.
+2. Use `test-driven-development` where practical.
+3. Implement the smallest complete vertical slice.
+4. Run validation commands.
+5. Use `systematic-debugging` or `debugging-and-error-recovery` if checks fail.
+
+Helper scripts:
+
+```text
+todo_manager.py
+quality_gate.py
+workflow_runner.py
+```
+
+## Phase 5. Independent validation
+
+A separate validation critic checks:
+
+```text
+diff/touched files
+acceptance criteria
+failing-then-passing evidence
+lint/build/test/eval evidence
+regression risk
+missing tests
+security concerns
+documentation requirements
+```
+
+Helper scripts:
+
+```text
+subagent_brief_builder.py
+critic_ledger.py
+quality_gate.py
+```
+
+## Phase 6. Documentation
+
+Before a TODO is completed, update one or more:
+
+```text
+README.md
+docs/
+docs/adr/
+CHANGELOG.md
+implementation-log.md
+API docs
+usage examples
+```
+
+Helper scripts:
+
+```text
+doc_sync_check.py
+rdd_state.py
+```
+
+## Phase 7. Improvement critique
+
+After validation and documentation, spawn critical-only improvement agents:
+
+```text
+quality critic
+efficiency/performance critic
+accuracy/evaluation critic
+data/CSV critic
+documentation critic
+maintainability critic
+```
+
+Accepted improvements become new TODOs.
+
+## Phase 8. TODO update and repeat
+
+Update ledgers:
+
+```text
+todos.jsonl
+critic-findings.jsonl
+decision-log.md
+review-ledger.md
+implementation-log.md
+```
+
+Continue until all TODOs are `completed`, `blocked`, or `deferred`.

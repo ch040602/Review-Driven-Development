@@ -1,0 +1,30 @@
+{
+  "name": "review-driven-development",
+  "version": "github-ready-v3",
+  "updated_at": "2026-06-04",
+  "summary": [
+    "Rewrote README.md for GitHub publication with install, quick start, operation model, validation, and GitHub setup sections.",
+    "Updated README.ko.md and README.en.md.",
+    "Added GitHub Actions CI, Dependabot, issue templates, PR template, CODEOWNERS, and community files.",
+    "Added GitHub upload checklist and setup guide.",
+    "Added pyproject.toml and refreshed VALIDATION.md."
+  ],
+  "key_files": [
+    "README.md",
+    "README.ko.md",
+    "README.en.md",
+    "GITHUB_UPLOAD_CHECKLIST.md",
+    "docs/github-setup.md",
+    ".github/workflows/ci.yml",
+    ".github/dependabot.yml",
+    ".github/PULL_REQUEST_TEMPLATE.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "SUPPORT.md",
+    "CODE_OF_CONDUCT.md",
+    "pyproject.toml",
+    "skills/review-driven-development/SKILL.md",
+    "VALIDATION.md",
+    "EVALUATION_AND_UPDATES.md"
+  ]
+}

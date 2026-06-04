@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-06-03T00:00:00+00:00",
+  "updated_at": "2026-06-03T00:00:00+00:00",
+  "language": {
+    "user_facing": "ko",
+    "documentation": "ko",
+    "preserve_code_terms": true
+  },
+  "priority": {
+    "completeness_over_speed": true,
+    "safety_over_scope": true
+  },
+  "existing_code_policy": "review_then_reuse",
+  "implementation_method": "tdd_first_incremental",
+  "source_grounding": true,
+  "markdown_context": true,
+  "always_run_critical_subagents": true,
+  "always_document_completed_todos": true,
+  "data_critic_on_csv_or_logs": true,
+  "review_comments_to_todos": true,
+  "ask_before_destructive_changes": true,
+  "commands": {
+    "test": [],
+    "lint": [],
+    "build": [],
+    "eval": []
+  }
+}
