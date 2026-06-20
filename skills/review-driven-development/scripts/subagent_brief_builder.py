@@ -61,6 +61,11 @@ ROLE_SETS: Dict[str, List[str]] = {
     "validation": ["validation-runner-critic", "test-tdd-critic", "security-risk-critic", "documentation-critic", "maintainability-critic"],
     "improvement": ["quality-critic", "performance-efficiency-critic", "accuracy-evaluation-critic", "data-csv-critic", "documentation-critic", "maintainability-critic"],
 }
+CRITIC_DEPTH_LIMITS = {
+    "minimal": 2,
+    "standard": 4,
+    "deep": 99,
+}
 
 CRITICAL_CONTRACT = """You are a critical-only subagent for review-driven-development.
 Do not praise. Do not decide. Do not implement patches.
@@ -101,21 +106,76 @@ def load_inventory(root: Path) -> Dict[str, Any] | None:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def role_list_for_phase(phase: str, inventory: Optional[Mapping[str, Any]] = None) -> List[str]:
-    """Return critic roles for a phase using inventory hints."""
+def role_list_for_phase(
+    phase: str,
+    inventory: Optional[Mapping[str, Any]] = None,
+    *,
+    critic_depth: str = "standard",
+    max_roles: int | None = None,
+) -> List[str]:
+    """Return critic roles for a phase using inventory hints and depth caps."""
+
     if phase not in ROLE_SETS:
         raise ValueError(f"Unknown phase: {phase}. Expected one of {sorted(ROLE_SETS)}")
-    roles = list(ROLE_SETS[phase])
+    if critic_depth not in CRITIC_DEPTH_LIMITS:
+        raise ValueError(f"Unknown critic depth: {critic_depth}. Expected one of {sorted(CRITIC_DEPTH_LIMITS)}")
+
+    if inventory and isinstance(inventory.get("recommended_critics"), list) and phase == "preplan":
+        roles = [str(role) for role in inventory.get("recommended_critics", [])]
+    elif phase == "preplan":
+        roles = ["requirements-critic", "test-tdd-critic"]
+        roles.append("existing-code-reuse-refactor-critic" if not inventory or inventory.get("has_existing_code", True) else "greenfield-scope-critic")
+    elif phase == "validation":
+        roles = ["validation-runner-critic", "test-tdd-critic", "maintainability-critic"]
+    else:
+        roles = ["quality-critic", "performance-efficiency-critic", "accuracy-evaluation-critic"]
+
+    if inventory:
+        if inventory.get("requires_data_critic"):
+            roles.append("data-csv-critic")
+        if inventory.get("needs_security_critic"):
+            roles.append("security-risk-critic")
+        if inventory.get("frameworks") and phase == "preplan":
+            roles.append("source-driven-framework-critic")
+        if inventory.get("docs") and phase in {"validation", "improvement"}:
+            roles.append("documentation-critic")
+
     if inventory and not inventory.get("requires_data_critic", False):
         roles = [role for role in roles if role != "data-csv-critic"]
+    if inventory and not inventory.get("needs_security_critic", False):
+        roles = [role for role in roles if role != "security-risk-critic"]
+    if inventory and not inventory.get("frameworks") and phase == "preplan":
+        roles = [role for role in roles if role not in {"source-driven-framework-critic", "source-grounding-critic"}]
+    if inventory and not inventory.get("docs") and phase in {"preplan", "validation", "improvement"}:
+        roles = [role for role in roles if role not in {"documentation-critic", "markdown-doc-context-critic"}]
     if inventory and not inventory.get("has_existing_code", True):
         roles = ["greenfield-scope-critic" if role == "existing-code-reuse-refactor-critic" else role for role in roles]
-    if inventory and inventory.get("frameworks") and phase == "preplan":
-        roles.append("source-driven-framework-critic")
-    return list(dict.fromkeys(roles))
+
+    roles = list(dict.fromkeys(roles))
+    cap = max_roles if max_roles is not None else CRITIC_DEPTH_LIMITS[critic_depth]
+    return roles[:max(1, cap)]
 
 
-def build_brief(role: str, phase: str, todo_id: str | None, context_summary: str, inventory: Optional[Mapping[str, Any]] = None) -> str:
+def compact_context_summary(context_summary: str, max_chars: int) -> str:
+    """Bound context embedded in generated briefs."""
+
+    if max_chars <= 0:
+        return "[omitted for token budget]"
+    compact = context_summary or "No context summary provided. Inspect available project state and task context."
+    if len(compact) <= max_chars:
+        return compact
+    return compact[: max(0, max_chars - 40)].rstrip() + "\n[truncated for token budget]"
+
+
+def build_brief(
+    role: str,
+    phase: str,
+    todo_id: str | None,
+    context_summary: str,
+    inventory: Optional[Mapping[str, Any]] = None,
+    *,
+    context_max_chars: int = 1200,
+) -> str:
     """Build a Markdown prompt for one critical-only subagent."""
     spec = get_role_spec(role, phase)
     inventory_note = ""
@@ -126,7 +186,13 @@ def build_brief(role: str, phase: str, todo_id: str | None, context_summary: str
             "has_existing_code": inventory.get("has_existing_code"),
             "has_tests": inventory.get("has_tests"),
             "requires_data_critic": inventory.get("requires_data_critic"),
+            "needs_security_critic": inventory.get("needs_security_critic"),
+            "inventory_mode": inventory.get("inventory_mode"),
+            "docs": list(inventory.get("docs", []))[:8],
+            "tests": list(inventory.get("tests", []))[:8],
+            "source_files_sample": list(inventory.get("source_files_sample", []))[:12],
         }, ensure_ascii=False, indent=2) + "\n"
+    bounded_context = compact_context_summary(context_summary, context_max_chars)
     return f"""# Subagent brief: {role}
 
 ## Phase
@@ -151,7 +217,7 @@ def build_brief(role: str, phase: str, todo_id: str | None, context_summary: str
 
 ## Context summary
 
-{context_summary or "No context summary provided. Inspect available project state and task context."}
+{bounded_context}
 {inventory_note}
 ## Output format
 
@@ -159,16 +225,33 @@ def build_brief(role: str, phase: str, todo_id: str | None, context_summary: str
 """
 
 
-def write_briefs(root: Path, phase: str, todo_id: str | None, context_summary: str, roles: Optional[Iterable[str]] = None) -> List[Path]:
+def write_briefs(
+    root: Path,
+    phase: str,
+    todo_id: str | None,
+    context_summary: str,
+    roles: Optional[Iterable[str]] = None,
+    *,
+    critic_depth: str = "standard",
+    max_roles: int | None = None,
+    context_max_chars: int = 1200,
+) -> List[Path]:
     """Write critical-only briefs for one phase."""
     inventory = load_inventory(root)
-    selected_roles = list(roles) if roles is not None else role_list_for_phase(phase, inventory)
+    selected_roles = (
+        list(roles)
+        if roles is not None
+        else role_list_for_phase(phase, inventory, critic_depth=critic_depth, max_roles=max_roles)
+    )
     directory = root / STATE_DIR / "subagent-briefs" / f"{phase}-{now_stamp()}"
     directory.mkdir(parents=True, exist_ok=True)
     paths: List[Path] = []
     for role in selected_roles:
         path = directory / f"{role}.md"
-        path.write_text(build_brief(role, phase, todo_id, context_summary, inventory), encoding="utf-8")
+        path.write_text(
+            build_brief(role, phase, todo_id, context_summary, inventory, context_max_chars=context_max_chars),
+            encoding="utf-8",
+        )
         paths.append(path)
     return paths
 
@@ -213,8 +296,20 @@ def main() -> None:
     parser.add_argument("--todo-id")
     parser.add_argument("--context-summary", default="")
     parser.add_argument("--role", action="append", help="Override role list; can be repeated")
+    parser.add_argument("--critic-depth", choices=sorted(CRITIC_DEPTH_LIMITS), default="standard")
+    parser.add_argument("--max-roles", type=int)
+    parser.add_argument("--context-max-chars", type=int, default=1200)
     args = parser.parse_args()
-    paths = write_briefs(Path(args.root).resolve(), args.phase, args.todo_id, args.context_summary, roles=args.role)
+    paths = write_briefs(
+        Path(args.root).resolve(),
+        args.phase,
+        args.todo_id,
+        args.context_summary,
+        roles=args.role,
+        critic_depth=args.critic_depth,
+        max_roles=args.max_roles,
+        context_max_chars=args.context_max_chars,
+    )
     for path in paths:
         print(path)
 

@@ -140,6 +140,15 @@ EXTERNAL_SKILLS: List[ExternalSkill] = [
         install_hint="$skill-installer openai-docs",
     ),
     ExternalSkill(
+        name="agentic-rag",
+        provider="ch040602",
+        url="https://github.com/ch040602/Agentic-RAG-Skill",
+        required=False,
+        phase="companion-rag",
+        purpose="Optional companion skill for Agentic RAG, cross-corpus retrieval, context sufficiency, query rewriting, and grounded synthesis TODOs inside RDD workflows.",
+        install_hint="Install or copy the reviewed .agents/skills/agentic-rag directory from https://github.com/ch040602/Agentic-RAG-Skill.",
+    ),
+    ExternalSkill(
         name="using-agent-skills",
         provider="addyosmani/agent-skills",
         url="https://github.com/addyosmani/agent-skills/blob/main/skills/using-agent-skills/SKILL.md",

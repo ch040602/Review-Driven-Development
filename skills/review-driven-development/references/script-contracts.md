@@ -30,7 +30,7 @@ Purpose: Shared constants, path helpers, timestamp helpers, and tiny formatting 
 
 ## `context_inventory.py`
 
-Purpose: Inspect source/docs/tests/build/data context before planning and route critics based on evidence.
+Purpose: Inspect source/docs/tests/build/data context before planning, write reusable cache metadata, create compact context packs, and route critics based on evidence.
 
 | Function/class | Intended implementation boundary |
 |---|---|
@@ -42,13 +42,38 @@ Purpose: Inspect source/docs/tests/build/data context before planning and route 
 | `count_languages` | Count detected source languages. |
 | `group_paths` | Group paths into source/doc/data/test/build categories. |
 | `read_text_snippet` | Read a small UTF-8 snippet, returning empty string for binary/failed reads. |
+| `tokenize_for_index` | Return stable high-signal terms for a semantic locator index. |
+| `extract_symbols` | Extract shallow function/class/interface symbols from one text file. |
+| `split_identifier_terms` | Expand snake/camel/path identifiers into searchable terms. |
+| `build_search_text` | Build bounded text used by semantic ranking backends. |
+| `sklearn_available` | Return True when scikit-learn semantic ranking can be used. |
+| `sentence_transformers_available` | Return True when dense embedding ranking can be used. |
+| `encode_embedding_texts` | Encode texts with SentenceTransformers, returning JSON-serializable vectors. |
+| `dot_score` | Return cosine score for normalized vectors, or dot-product fallback. |
 | `collect_doc_snippets` | Collect snippets from key Markdown/spec files. |
+| `prioritize_paths` | Order paths for compact Codex context consumption. |
+| `unique_ordered` | Return unique paths while preserving the incoming order. |
+| `build_file_fingerprint` | Build a cheap project fingerprint without reading file contents. |
+| `build_semantic_index` | Build a bounded lexical/symbol index for quick file location. |
+| `summarize_semantic_index` | Return compact semantic index metadata for context packs and cache. |
+| `search_semantic_index` | Rank semantic index files for a query using TF-IDF when available. |
 | `infer_frameworks` | Infer likely frameworks from manifests and build files. |
 | `choose_recommended_critics` | Choose critic roles based on the inventory. |
 | `build_inventory` | Build the full project context inventory. |
+| `build_context_pack` | Build a compact Markdown pack optimized for quick Codex reference. |
 | `summarize_inventory` | Return a human-readable summary for prompts and briefs. |
 | `save_inventory` | Save context inventory under project state. |
+| `save_context_pack` | Save a compact Markdown context pack for fast Codex loading. |
+| `save_context_cache` | Save cache metadata used to reuse inventory and context packs safely. |
+| `save_semantic_index` | Save the semantic locator index under project state. |
 | `load_inventory` | Load saved context inventory if it exists. |
+| `load_context_pack` | Load the compact context pack if present. |
+| `load_context_cache` | Load context cache metadata if present and parseable. |
+| `load_semantic_index` | Load the semantic locator index if present and parseable. |
+| `detect_context_script` | Return the best repo-local context inventory command path. |
+| `build_bootstrap_block` | Build an AGENTS.md block that injects fast context instructions. |
+| `write_bootstrap` | Insert or replace the RDD fast-context bootstrap block in a repo file. |
+| `sync_context` | Reuse valid context cache or rebuild inventory and compact context pack. |
 | `main` | CLI entrypoint; keep side effects explicit and bounded to the requested root/path. |
 
 ## `critic_ledger.py`
@@ -306,6 +331,12 @@ Purpose: Provide high-level orchestration preview and safe state setup that Code
 | Function/class | Intended implementation boundary |
 |---|---|
 | `run_context_phase` | Inventory project context and build a requirement packet. |
+| `run_sync_phase` | Synchronize inventory/cache/context-pack state for fast reuse. |
+| `run_overview_phase` | Return the compact context pack for quick Codex reference. |
+| `run_semantic_index_phase` | Return bounded semantic locator metadata for quick file lookup. |
+| `run_semantic_search_phase` | Return ranked likely files for a semantic query. |
+| `run_bootstrap_phase` | Write repo-local fast-context bootstrap guidance. |
+| `run_commands_phase` | Return common RDD commands for context/cache/TODO/quality UX. |
 | `needs_first_run` | Return True when defaults are missing. |
 | `build_first_run_action` | Return the action the main agent should take for first-run setup. |
 | `run_preplan_critique_phase` | Write preplan critical-only subagent briefs. |

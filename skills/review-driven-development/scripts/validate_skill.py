@@ -15,6 +15,7 @@ REQUIRED_FILES = [
     "references/subagent-roles.md",
     "references/internal-skill-map.md",
     "references/external-skill-links.md",
+    "references/external-skills.json",
     "references/first-run-questionnaire.md",
     "references/script-contracts.md",
     "references/codex-completion-and-registration.md",

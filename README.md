@@ -30,6 +30,7 @@ The skill is intentionally conservative:
 | Persistent state | `.codex/review-driven-development/profile.md`, `defaults.json`, ledgers |
 | Requirement analysis | Language/method/code-reuse options with tradeoffs |
 | Source/file analysis | Markdown, README, AGENTS.md, source, tests, build files, CSV/data files |
+| Context cache | Bounded fingerprint cache, compact `context-pack.md`, semantic locator index, and repo-local bootstrap |
 | Critical subagents | Pre-plan, validation, and improvement brief generation |
 | TODO lifecycle | Append-only TODO ledger with one active TODO rule |
 | Validation | Dry-run and executed quality-gate reports for test/lint/build/eval |
@@ -75,6 +76,15 @@ Install test dependency locally:
 
 ```bash
 python -m pip install -U pip pytest
+```
+
+For higher-accuracy semantic ranking, install optional ranking extras:
+
+```bash
+python -m pip install -e ".[semantic]"
+python -m pip install -e ".[embeddings]"
+# or both
+python -m pip install -e ".[all]"
 ```
 
 ## Install as a Codex skill
@@ -139,7 +149,7 @@ Expected result:
 ```text
 validate_skill.py: ok True
 self_test.py: ok true
-pytest: 11 passed
+pytest: 14 passed
 ```
 
 Create project state:
@@ -150,10 +160,15 @@ python skills/review-driven-development/scripts/rdd_state.py --root . init-defau
   --answers "English docs, Korean responses, TDD-first, review then reuse existing code"
 ```
 
-Build a project inventory:
+Build or reuse a project inventory, cache, and compact context pack:
 
 ```bash
-python skills/review-driven-development/scripts/context_inventory.py --root . --save --summary
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --summary
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --overview
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --semantic-summary
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --semantic-search "quality gate completion"
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --bootstrap
+python skills/review-driven-development/scripts/workflow_runner.py --root . --phase commands
 ```
 
 Create or start a TODO:
@@ -259,8 +274,32 @@ The skill stores project-local state under:
 ├── review-ledger.md
 ├── implementation-log.md
 ├── context-inventory.json
+├── context-cache.json
+├── context-pack.md
+├── context-semantic-index.json
 └── validation-reports/
 ```
+
+### Fast context reuse
+
+The context layer follows the ECC-style idea of loading compact, relevant context before opening large files. `context_inventory.py --sync` fingerprints the project with path/size/mtime metadata, reuses a valid cache, and writes:
+
+```text
+.codex/review-driven-development/context-inventory.json
+.codex/review-driven-development/context-cache.json
+.codex/review-driven-development/context-pack.md
+.codex/review-driven-development/context-semantic-index.json
+```
+
+Codex should read `context-pack.md` first, run `--semantic-search "<query>"` to rank likely files, then open only the source/docs referenced by the active TODO. `context-semantic-index.json` stores the bounded file/symbol/term corpus and optional embedding vectors. Default ranking uses `scikit-learn` TF-IDF when installed, then lexical overlap; add `--embeddings` only when dense `sentence-transformers` ranking is worth the model-load cost. `--sync --bootstrap` inserts a marker-managed `AGENTS.md` block so future Codex sessions see this policy automatically.
+
+Default `self_test.py` avoids embedding model loading for CI stability. Run the heavier embedding smoke check explicitly:
+
+```bash
+python skills/review-driven-development/scripts/self_test.py --embeddings
+```
+
+Set `HF_TOKEN` for higher Hugging Face rate limits when using `--embeddings`. In offline or restricted environments use the default non-embedding path, `--force-tfidf`, or `--force-lexical`.
 
 ### Completion gate
 

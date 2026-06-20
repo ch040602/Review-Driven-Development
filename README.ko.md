@@ -28,6 +28,7 @@ English README: [README.en.md](README.en.md)
 | 영구 상태 | `.codex/review-driven-development/profile.md`, `defaults.json`, ledger |
 | 요구사항 분석 | 언어, 구현 방식, 기존 코드 처리, 장단점 옵션화 |
 | source/file 분석 | Markdown, README, AGENTS.md, source, tests, build files, CSV/data files |
+| context cache | bounded fingerprint cache, compact `context-pack.md`, semantic locator index, repo-local bootstrap |
 | 비판 subagent | pre-plan, validation, improvement brief 생성 |
 | TODO lifecycle | append-only TODO ledger, 한 개 active TODO 규칙 |
 | 검증 | test/lint/build/eval quality-gate report |
@@ -44,6 +45,15 @@ English README: [README.en.md](README.en.md)
 
 ```bash
 python -m pip install -U pip pytest
+```
+
+semantic search 정확도를 높이려면 다음 extra를 설치합니다.
+
+```bash
+python -m pip install -e ".[semantic]"
+python -m pip install -e ".[embeddings]"
+# 또는 둘 다
+python -m pip install -e ".[all]"
 ```
 
 ## Codex skill 설치
@@ -102,11 +112,26 @@ python skills/review-driven-development/scripts/rdd_state.py --root . init-defau
   --answers "한국어 응답, 한국어 문서화, TDD 우선, 기존 코드는 리뷰 후 재사용"
 ```
 
-프로젝트 inventory 생성:
+프로젝트 inventory/cache/context pack 생성 또는 재사용:
 
 ```bash
-python skills/review-driven-development/scripts/context_inventory.py --root . --save --summary
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --summary
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --overview
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --semantic-summary
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --semantic-search "quality gate completion"
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --bootstrap
+python skills/review-driven-development/scripts/workflow_runner.py --root . --phase commands
 ```
+
+Codex는 `.codex/review-driven-development/context-pack.md`를 먼저 읽고, `--semantic-search "<query>"`로 관련 파일을 ranking한 뒤, active TODO가 가리키는 source/docs만 추가로 여는 방식으로 메모리를 아낍니다. 기본 ranking은 `scikit-learn` TF-IDF가 설치되어 있으면 이를 쓰고, 없으면 lexical overlap을 씁니다. dense `sentence-transformers` ranking은 모델 로드 비용을 감수할 때 `--embeddings`로 명시 opt-in합니다. `--sync --bootstrap`은 repo-local `AGENTS.md`에 marker-managed 자동 주입 block을 추가합니다.
+
+기본 `self_test.py`는 CI 안정성을 위해 embedding model load를 피합니다. 실제 embedding smoke check는 명시적으로 실행합니다.
+
+```bash
+python skills/review-driven-development/scripts/self_test.py --embeddings
+```
+
+`--embeddings`를 사용할 때 Hugging Face rate limit을 줄이려면 `HF_TOKEN`을 설정합니다. offline/제한 환경에서는 기본 non-embedding 경로, `--force-tfidf`, `--force-lexical`을 사용합니다.
 
 TODO 생성 및 시작:
 

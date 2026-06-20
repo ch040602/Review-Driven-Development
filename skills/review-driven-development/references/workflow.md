@@ -14,6 +14,23 @@ context_inventory.py
 requirement_analyzer.py
 ```
 
+Fast context sync:
+
+```text
+context_inventory.py --sync
+context_inventory.py --sync --semantic-summary
+context_inventory.py --sync --semantic-search "<query>"
+context_inventory.py --sync --bootstrap
+workflow_runner.py --phase sync
+workflow_runner.py --phase overview
+workflow_runner.py --phase semantic-index
+workflow_runner.py --phase semantic-search --query "<query>"
+workflow_runner.py --phase bootstrap
+workflow_runner.py --phase commands
+```
+
+`context-pack.md` should be the first Codex reference after sync. Use `--semantic-search "<query>"` to rank likely files, symbols, and terms before broad search. Ranking uses `sentence-transformers` embedding cosine when vectors are available, `scikit-learn` TF-IDF when installed, and lexical overlap otherwise. Use the full `context-inventory.json` or source files only when the pack, search result, or active TODO points to them. `--bootstrap` writes a marker-managed `AGENTS.md` block so future Codex sessions receive this policy automatically.
+
 ## Phase 1. Source/file-driven requirements analysis
 
 Analyze:
@@ -35,6 +52,10 @@ Output:
 
 ```text
 requirement packet
+context-cache metadata
+compact context pack
+semantic locator index
+repo-local bootstrap guidance when requested
 language/runtime options with pros/cons
 implementation method options with pros/cons
 existing code reuse/review/refactor options with pros/cons

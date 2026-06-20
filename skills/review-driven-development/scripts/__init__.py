@@ -18,6 +18,9 @@ PUBLIC_STATE_FILES = (
     "defaults.json",
     "commands.json",
     "context-inventory.json",
+    "context-cache.json",
+    "context-pack.md",
+    "context-semantic-index.json",
     *DEFAULT_LEDGER_FILES,
 )
 

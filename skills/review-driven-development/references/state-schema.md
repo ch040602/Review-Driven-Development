@@ -19,6 +19,10 @@ All state lives under:
 | `implementation-log.md` | Markdown | Completed TODO evidence and documentation status |
 | `commands.json` | JSON | test/lint/build/eval command groups |
 | `context-inventory.json` | JSON | Last project context inventory |
+| `context-cache.json` | JSON | Fingerprint metadata for safe inventory/context-pack reuse |
+| `context-pack.md` | Markdown | Compact Codex-first project context summary |
+| `context-semantic-index.json` | JSON | Bounded lexical/symbol locator index for targeted file lookup |
+| `AGENTS.md` marker block | Markdown | Optional repo-local fast-context bootstrap instructions |
 
 ## TODO event
 
@@ -113,3 +117,61 @@ Consumers should prefer `event`, `created_at`, `evidence`, `review_refs`, and `d
   }
 }
 ```
+
+## Context cache
+
+```json
+{
+  "schema_version": 1,
+  "created_at": "2026-06-05T00:00:00+00:00",
+  "strategy": "bounded-file-metadata-fingerprint-plus-compact-context-pack",
+  "fingerprint": {
+    "algorithm": "sha256:path-size-mtime",
+    "digest": "",
+    "file_count": 0,
+    "newest_mtime": 0,
+    "newest_path": "",
+    "max_files": 5000
+  },
+  "inventory_path": ".codex/review-driven-development/context-inventory.json",
+  "context_pack_path": ".codex/review-driven-development/context-pack.md",
+  "semantic_index_path": ".codex/review-driven-development/context-semantic-index.json",
+  "semantic_index_summary": {
+    "strategy": "bounded-lexical-symbol-index",
+    "file_count": 0,
+    "symbol_count": 0,
+    "top_terms": []
+  },
+  "scanned_file_count": 0,
+  "primary_languages": [],
+  "frameworks": []
+}
+```
+
+`context-pack.md` is intentionally compact Markdown. Consumers should read it before opening the full inventory or source files.
+
+## Semantic index
+
+```json
+{
+  "schema_version": 1,
+  "created_at": "2026-06-05T00:00:00+00:00",
+  "strategy": "bounded-lexical-symbol-index",
+  "ranking_backend": "embedding-cosine | sklearn-tfidf | lexical-overlap",
+  "embedding": {
+    "enabled": true,
+    "available": true,
+    "model": "sentence-transformers/all-MiniLM-L6-v2",
+    "dimension": 384,
+    "vectors": [],
+    "error": null
+  },
+  "file_count": 0,
+  "symbol_count": 0,
+  "files": [{"path": "src/app.py", "terms": [], "symbols": [], "search_text": "bounded search corpus"}],
+  "symbols": [{"name": "Example", "kind": "class", "path": "src/app.py", "line": 1}],
+  "terms": {"example": ["src/app.py"]}
+}
+```
+
+The semantic index is a locator only. It narrows which files Codex should open; it does not replace source inspection. Default ranking uses `scikit-learn` TF-IDF when installed, then lexical overlap. Dense `sentence-transformers` ranking is available only when vectors were built with explicit `--embeddings`.

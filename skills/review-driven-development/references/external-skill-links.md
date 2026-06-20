@@ -25,6 +25,7 @@ Use this file whenever `review-driven-development` invokes or recommends an exte
 | `create-plan` | Structured planning; experimental, verify before production use | https://github.com/openai/skills/blob/main/skills/.experimental/create-plan/SKILL.md |
 | `gh-address-comments` | Import and address GitHub PR comments as review/TODO inputs | https://github.com/openai/skills/blob/main/skills/.curated/gh-address-comments/SKILL.md |
 | `openai-docs` | OpenAI/Codex/API documentation grounding | https://github.com/openai/skills/blob/main/skills/.curated/openai-docs/SKILL.md |
+| `agentic-rag` | Optional companion skill for Agentic RAG, cross-corpus retrieval, context sufficiency, query rewriting, and grounded synthesis TODOs | https://github.com/ch040602/Agentic-RAG-Skill |
 
 ## Community engineering workflow skills
 
@@ -50,6 +51,7 @@ The following names came from the user's current skill list. Use them when they 
 
 ```text
 paper-summary-agent
+agentic-rag
 research-idea-consensus
 prompt-graph-manager
 hatch-pet

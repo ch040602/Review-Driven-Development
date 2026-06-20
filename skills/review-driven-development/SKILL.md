@@ -1,6 +1,6 @@
 ---
 name: review-driven-development
-description: Use this skill for high-completeness software/research development. It analyzes requirements and source/docs/files, asks first-run defaults, uses critical-only subagents, turns accepted findings into TODOs, executes one TODO at a time, validates with test-driven-development, documents completed work, and repeats improvement review. Supports Korean and English.
+description: Use this skill for high-completeness software/research development. It analyzes requirements and compact source/docs/files context, asks first-run defaults, uses rule-gated critical-only subagents, turns accepted findings into TODOs, executes one TODO at a time, validates with test-driven-development, documents completed work, and repeats improvement review. Supports Korean and English.
 ---
 
 # review-driven-development
@@ -10,10 +10,27 @@ description: Use this skill for high-completeness software/research development.
 Run one integrated workflow:
 
 ```text
-requirements -> first-run defaults -> source/file analysis -> parallel critical subagents -> main-agent decisions -> TODO plan -> one TODO execution -> TDD validation -> independent critical review -> documentation -> improvement critique -> TODO update -> repeat
+requirements -> first-run defaults -> compact source/file analysis -> rule-gated critical subagents -> main-agent decisions -> TODO plan -> one TODO execution -> TDD validation -> independent critical review -> documentation -> gated improvement critique -> TODO update -> repeat
 ```
 
-Optimize for completeness, correctness, maintainability, traceability, and research usefulness over speed.
+Optimize for completeness, correctness, maintainability, traceability, research usefulness, and fast context reuse. Prefer compact evidence packets and rule-based narrowing before spending LLM/subagent tokens.
+
+## Token-Budget Defaults
+
+Use the smallest mode that can safely answer the current TODO.
+
+- `fast`: small/local edits, docs-only changes, or already-known target files. Inventory is capped aggressively and snippets are omitted.
+- `standard`: default mode. Inventory records ranked source/docs/tests/build/data lists, omits snippets by default, and generates only high-signal critic briefs.
+- `deep`: opt-in for broad migrations, security-sensitive work, data-heavy work, unfamiliar frameworks, or when validation/review finds missing context.
+
+Dense `sentence-transformers` ranking is opt-in with `--embeddings`; default semantic search uses `scikit-learn` TF-IDF when installed, then lexical overlap.
+
+Additional operating goals:
+
+- Reduce first-response latency by reusing `context-cache.json` and avoiding model loads unless requested.
+- Keep generated critic briefs small enough to inspect quickly while preserving blocker/high-risk review coverage.
+- Prefer targeted file ranking over broad source-tree reads.
+- Preserve an explicit `deep` path for high-risk work instead of silently weakening review quality.
 
 ## Non-negotiable rules
 
@@ -21,9 +38,9 @@ Optimize for completeness, correctness, maintainability, traceability, and resea
 2. Use other skills only internally and record where they influenced the decision.
 3. On first use in a project, ask `references/first-run-questionnaire.md` questions and save exact answers.
 4. Persist defaults under `.codex/review-driven-development/` and use them silently on later runs unless the user overrides them.
-5. Analyze prompt text, attached files, Markdown docs, `AGENTS.md`, source files, tests, build files, and data files before planning.
+5. Analyze prompt text, attached files, Markdown docs, `AGENTS.md`, source files, tests, build files, and data files before planning, but start from compact inventory summaries and targeted reads.
 6. If existing code exists, ask whether to reuse, review, refactor, replace, isolate, or decide per TODO. If defaults exist, follow the saved policy.
-7. Use subagents aggressively where work can be parallelized.
+7. Use subagents only when a rule-based signal or unresolved uncertainty justifies parallel critical review. Default to `standard` critic depth; use `minimal` for low-risk local work and `deep` only for concrete broad/high-risk work.
 8. Debate, validation, review, and improvement subagents are **critical-only**: they identify risks and missing evidence; they do not decide or patch.
 9. The main agent alone classifies feedback as `accept`, `reject`, `defer`, or `needs_user_input`.
 10. Only accepted feedback becomes TODOs.
@@ -31,7 +48,18 @@ Optimize for completeness, correctness, maintainability, traceability, and resea
 12. Use `test-driven-development` for behavior changes and validation. When practical, write or update a failing test before implementation.
 13. Use `systematic-debugging` for failed checks before broad changes.
 14. Do not mark a TODO completed until evidence, validation notes, review notes, and documentation status are recorded.
-15. After each TODO, run an improvement critique focused on quality, efficiency, accuracy, data correctness, documentation, and maintainability.
+15. After each TODO, run improvement critique only at the depth justified by risk: `minimal` for straightforward validated changes, `standard` by default, `deep` for data/security/architecture/performance-sensitive work.
+
+## Rule-Based Subagent Triggers
+
+Default critic selection is generated by `scripts/subagent_brief_builder.py` from `context-inventory.json`.
+
+- Always consider requirements, TDD/validation, and reuse/greenfield-scope critics.
+- Add `data-csv-critic` only when data files are detected or the user task is data/evaluation-heavy.
+- Add `security-risk-critic` only when filenames/task context show auth, secrets, tokens, permissions, privacy, destructive operations, or deployment risk.
+- Add `source-driven-framework-critic` only when framework/build manifests are detected or a framework/API claim must be grounded.
+- Add documentation critics only when docs are present and likely to affect behavior, installation, API, or user-facing guidance.
+- Cap generated briefs unless the user explicitly requests deep review or the main agent records an escalation reason.
 
 ## Required state files
 
@@ -53,6 +81,9 @@ review-ledger.md        # review and validation summaries
 implementation-log.md   # completed work, evidence, docs status
 commands.json           # test/lint/build/eval commands when known
 context-inventory.json  # source/docs/data inventory snapshot
+context-cache.json      # fingerprint metadata for safe cache reuse
+context-pack.md         # compact Codex-first context summary
+context-semantic-index.json # bounded symbol/term locator index
 ```
 
 ## Required references
@@ -65,6 +96,7 @@ references/subagent-roles.md
 references/internal-skill-map.md
 references/external-skill-links.md       # canonical external skill URL list
 references/external-skills.md            # compatibility alias and external skill policy
+references/external-skills.json          # machine-readable optional/required external skill registry
 references/first-run-questionnaire.md
 references/script-contracts.md          # generated script contract summary
 references/function-scaffold.md          # function-by-function Python helper contract
@@ -80,7 +112,7 @@ The scripts are implemented helper contracts for inventory, requirement analysis
 
 ```text
 scripts/requirement_analyzer.py       # requirement packet and first response options
-scripts/context_inventory.py          # source/docs/tests/data inventory
+scripts/context_inventory.py          # source/docs/tests/data inventory, cache, context pack, semantic index, bootstrap
 scripts/external_skill_registry.py    # explicit external skill URLs and phase mapping
 scripts/subagent_brief_builder.py     # critical-only subagent briefs
 scripts/critic_ledger.py              # finding/decision ledger
@@ -98,7 +130,30 @@ scripts/data_profile.py              # CSV/TSV/JSONL data profile for data criti
 
 ## External skill link policy
 
+## Fast context policy
+
+Prefer `.codex/review-driven-development/context-pack.md` as the first project reference after synchronization. Use `context-inventory.json` for structured file lists, `context-cache.json` for cache validity metadata, and `context-semantic-index.json` plus `--semantic-search` for fast file ranking. Default backend order is `scikit-learn` TF-IDF, then lexical overlap; use `--embeddings` only when dense ranking is worth the time/model-load cost. Open full source files only when the compact pack, semantic search, or active TODO points to them.
+
+For repo-local automatic guidance, write the marker-managed `AGENTS.md` bootstrap block. Re-running the command replaces only that block.
+
+Useful commands:
+
+```text
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --summary
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --overview
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --semantic-summary
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --semantic-search "<query>"
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --bootstrap
+python skills/review-driven-development/scripts/workflow_runner.py --root . --phase overview
+python skills/review-driven-development/scripts/workflow_runner.py --root . --phase semantic-index
+python skills/review-driven-development/scripts/workflow_runner.py --root . --phase semantic-search --query "<query>"
+python skills/review-driven-development/scripts/workflow_runner.py --root . --phase bootstrap
+python skills/review-driven-development/scripts/workflow_runner.py --root . --phase commands
+```
+
 When invoking an external skill, consult `references/external-skill-links.md` or `references/external-skills.md` and prefer the explicit source URL listed there. Official OpenAI skills are preferred for OpenAI/Codex-specific behavior. Community skills must be treated as untrusted until their `SKILL.md`, scripts, and permissions are reviewed.
+
+Optional companion skills, such as `agentic-rag`, may be used internally for domain-specific TODOs when they are present locally or listed in `references/external-skills.json`. Keep `review-driven-development` as the single user-facing workflow and record companion influence in the decision log.
 
 ## Language policy
 

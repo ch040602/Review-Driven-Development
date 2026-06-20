@@ -27,6 +27,9 @@ REVIEW_LEDGER_FILE = "review-ledger.md"
 IMPLEMENTATION_LOG_FILE = "implementation-log.md"
 COMMANDS_FILE = "commands.json"
 CONTEXT_INVENTORY_FILE = "context-inventory.json"
+CONTEXT_CACHE_FILE = "context-cache.json"
+CONTEXT_PACK_FILE = "context-pack.md"
+CONTEXT_SEMANTIC_INDEX_FILE = "context-semantic-index.json"
 
 TODO_STATUSES = {"pending", "in_progress", "blocked", "completed", "deferred"}
 FINDING_SEVERITIES = {"blocker", "high", "medium", "low"}

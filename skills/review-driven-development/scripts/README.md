@@ -5,7 +5,7 @@ Each file is dependency-light and implements a bounded helper contract for the m
 | File | Main symbols | Role |
 |---|---|---|
 | `constants.py` | `utc_now`, `utc_stamp`, `project_state_dir`, `safe_slug`, `ensure_directory`, `markdown_title_from_filename`, `csv_line` | Shared constants and tiny helpers for review-driven-development. |
-| `context_inventory.py` | `now_iso`, `should_skip`, `iter_files`, `classify_file`, `collect_classified_files`, `count_languages`, `group_paths`, `read_text_snippet` … | Context inventory for review-driven-development. |
+| `context_inventory.py` | `now_iso`, `should_skip`, `iter_files`, `classify_file`, `collect_classified_files`, `count_languages`, `group_paths`, `read_text_snippet` … | Context inventory, cache, compact pack, semantic index, and bootstrap for review-driven-development. |
 | `critic_ledger.py` | `findings_path`, `normalize_severity`, `normalize_decision`, `create_finding`, `append_finding`, `read_findings`, `decide_finding`, `reconstruct_findings` … | Critical finding and decision ledger. |
 | `data_profile.py` | `now_iso`, `detect_dialect`, `iter_delimited_rows`, `iter_jsonl_rows`, `profile_rows`, `profile_data_file`, `discover_data_files`, `build_data_profile_report` … | Data profiling for the `review-driven-development` data/CSV critic. |
 | `doc_sync_check.py` | `now_iso`, `filename_timestamp`, `path_exists`, `discover_docs`, `infer_targets_from_files`, `load_todo`, `infer_targets_for_todo`, `build_doc_sync_report` … | Documentation synchronization checker. |
@@ -18,7 +18,24 @@ Each file is dependency-light and implements a bounded helper contract for the m
 | `subagent_brief_builder.py` | `RoleSpec`, `now_stamp`, `get_role_spec`, `load_inventory`, `role_list_for_phase`, `build_brief`, `write_briefs`, `parse_findings_placeholder` … | Subagent brief builder for review-driven-development. |
 | `todo_manager.py` | `now_iso`, `todos_path`, `read_events`, `deep_merge`, `current_state`, `validate_status`, `validate_todo_shape`, `assert_single_in_progress` … | TODO ledger helper for the review-driven-development skill. |
 | `validate_skill.py` | `check_required_files`, `check_frontmatter`, `check_script_compilation`, `check_external_links`, `check_bilingual_readme`, `validate`, `render_report`, `main` | Validate the review-driven-development skill draft. |
-| `workflow_runner.py` | `run_context_phase`, `needs_first_run`, `build_first_run_action`, `run_preplan_critique_phase`, `run_todo_generation_phase`, `run_execution_phase`, `run_validation_phase`, `run_documentation_phase` … | High-level workflow preview and safe state setup. |
+| `workflow_runner.py` | `run_context_phase`, `run_sync_phase`, `run_overview_phase`, `run_semantic_index_phase`, `run_bootstrap_phase`, `run_commands_phase` … | High-level workflow preview, safe state setup, and command UX. |
+
+## Fast context/cache UX
+
+```bash
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --summary
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --overview
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --semantic-summary
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --semantic-search "quality gate completion"
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --bootstrap
+python skills/review-driven-development/scripts/workflow_runner.py --root . --phase overview
+python skills/review-driven-development/scripts/workflow_runner.py --root . --phase semantic-index
+python skills/review-driven-development/scripts/workflow_runner.py --root . --phase semantic-search --query "quality gate completion"
+python skills/review-driven-development/scripts/workflow_runner.py --root . --phase bootstrap
+python skills/review-driven-development/scripts/workflow_runner.py --root . --phase commands
+```
+
+Install `python -m pip install -e ".[semantic]"` for default TF-IDF ranking through `scikit-learn`; lexical fallback remains available without it. Install `python -m pip install -e ".[embeddings]"` and pass `--embeddings` only when dense `sentence-transformers` ranking is worth the model-load cost. Default `self_test.py` avoids embedding model loading; run `python skills/review-driven-development/scripts/self_test.py --embeddings` for explicit embedding validation.
 
 ## Validation
 
@@ -36,4 +53,4 @@ python skills/review-driven-development/scripts/self_test.py
 pytest -q
 ```
 
-`self_test.py` verifies first-run detection, accepted critic finding to TODO conversion, one active TODO, deferred validation/improvement until after implementation, quality-gate evidence, independent review record, documentation status, and TODO completion gates.
+`self_test.py` verifies first-run detection, context cache/pack generation, semantic index generation, embedding/TF-IDF/fallback semantic search behavior, AGENTS bootstrap injection, command UX, accepted critic finding to TODO conversion, one active TODO, deferred validation/improvement until after implementation, quality-gate evidence, independent review record, documentation status, and TODO completion gates.

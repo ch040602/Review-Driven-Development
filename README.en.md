@@ -34,8 +34,38 @@ Expected result:
 ```text
 validate_skill.py: ok True
 self_test.py: ok true
-pytest: 11 passed
+pytest: 14 passed
 ```
+
+Optional semantic ranking dependency:
+
+```bash
+python -m pip install -e ".[semantic]"
+python -m pip install -e ".[embeddings]"
+# or both
+python -m pip install -e ".[all]"
+```
+
+Fast context sync:
+
+```bash
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --summary
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --overview
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --semantic-summary
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --semantic-search "quality gate completion"
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --bootstrap
+python skills/review-driven-development/scripts/workflow_runner.py --root . --phase commands
+```
+
+Codex should open `.codex/review-driven-development/context-pack.md` first, run `--semantic-search "<query>"` to rank likely files, then inspect only the files referenced by the active TODO. Default ranking uses `scikit-learn` TF-IDF when installed, then lexical overlap; add `--embeddings` only when dense `sentence-transformers` ranking is worth the model-load cost. `--sync --bootstrap` writes a marker-managed `AGENTS.md` block for future Codex sessions.
+
+Default `self_test.py` avoids embedding model loading for CI stability. Run the heavier embedding smoke check explicitly:
+
+```bash
+python skills/review-driven-development/scripts/self_test.py --embeddings
+```
+
+Set `HF_TOKEN` for higher Hugging Face rate limits when using `--embeddings`. In offline or restricted environments use the default non-embedding path, `--force-tfidf`, or `--force-lexical`.
 
 ## GitHub
 

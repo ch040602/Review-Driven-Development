@@ -7,6 +7,7 @@
 | Skill | Use inside `review-driven-development` | Link policy |
 |---|---|---|
 | `.system` | Baseline system/tool behavior | local/system |
+| `agentic-rag` | Companion workflow for Agentic RAG, cross-corpus retrieval, context sufficiency, query rewriting, and grounded synthesis tasks | local-current |
 | `paper-summary-agent` | Research paper and scholarly source digestion | local-current |
 | `research-idea-consensus` | Research idea critique and consensus synthesis | local-current |
 | `prompt-graph-manager` | Prompt/workflow graph organization for AI/LLM tasks | local-current |
@@ -69,6 +70,7 @@
 | Review comments | `gh-address-comments`, Codex GitHub review |
 | Documentation | `documentation-and-adrs`, `docx`, `pdf`, `frontend-slides` |
 | AI/LLM eval | `openai-docs`, `prompt-graph-manager`, `research-idea-consensus`, `paper-summary-agent` |
+| Agentic RAG / retrieval systems | `agentic-rag`, `source-driven-development`, `test-driven-development`, `code-review-and-quality` |
 
 ## Fallbacks
 

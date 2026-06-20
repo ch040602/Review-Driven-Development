@@ -21,7 +21,7 @@ This file is generated from the current `scripts/*.py` files. It lists each publ
 | File | Main symbols | Role |
 |---|---|---|
 | `constants.py` | `utc_now`, `utc_stamp`, `project_state_dir`, `safe_slug`, `ensure_directory`, `markdown_title_from_filename`, `csv_line` | Shared constants and tiny helpers for review-driven-development. |
-| `context_inventory.py` | `now_iso`, `should_skip`, `iter_files`, `classify_file`, `collect_classified_files`, `count_languages`, `group_paths`, `read_text_snippet` … | Context inventory helper for review-driven-development. |
+| `context_inventory.py` | `now_iso`, `should_skip`, `iter_files`, `classify_file`, `collect_classified_files`, `count_languages`, `group_paths`, `read_text_snippet` … | Context inventory, cache, and context-pack helper for review-driven-development. |
 | `critic_ledger.py` | `findings_path`, `normalize_severity`, `normalize_decision`, `create_finding`, `append_finding`, `read_findings`, `decide_finding`, `reconstruct_findings` … | Critical finding and decision ledger helper. |
 | `data_profile.py` | `now_iso`, `detect_dialect`, `iter_delimited_rows`, `iter_jsonl_rows`, `profile_rows`, `profile_data_file`, `discover_data_files`, `build_data_profile_report` … | Data profiling helper for the `review-driven-development` data/CSV critic. |
 | `doc_sync_check.py` | `now_iso`, `filename_timestamp`, `path_exists`, `discover_docs`, `infer_targets_from_files`, `load_todo`, `infer_targets_for_todo`, `build_doc_sync_report` … | Documentation synchronization checker helper. |
@@ -34,7 +34,7 @@ This file is generated from the current `scripts/*.py` files. It lists each publ
 | `subagent_brief_builder.py` | `RoleSpec`, `now_stamp`, `get_role_spec`, `load_inventory`, `role_list_for_phase`, `build_brief`, `write_briefs`, `parse_findings_placeholder` … | Subagent brief builder for review-driven-development. |
 | `todo_manager.py` | `now_iso`, `todos_path`, `read_events`, `deep_merge`, `current_state`, `validate_status`, `validate_todo_shape`, `assert_single_in_progress` … | TODO ledger helper for the review-driven-development skill. |
 | `validate_skill.py` | `check_required_files`, `check_frontmatter`, `check_script_compilation`, `check_external_links`, `check_bilingual_readme`, `check_optional_tests`, `validate`, `render_report`, `main` | Validate the review-driven-development skill package. |
-| `workflow_runner.py` | `run_context_phase`, `needs_first_run`, `build_first_run_action`, `run_preplan_critique_phase`, `run_todo_generation_phase`, `run_execution_phase`, `run_validation_phase`, `run_documentation_phase` … | High-level workflow orchestration preview. |
+| `workflow_runner.py` | `run_context_phase`, `run_sync_phase`, `run_overview_phase`, `run_semantic_index_phase`, `run_bootstrap_phase`, `run_commands_phase`, `needs_first_run`, `build_first_run_action` … | High-level workflow orchestration and command UX preview. |
 | `self_test.py` | `assert_true`, `run_self_test`, `main` | End-to-end standard-library smoke workflow validation. |
 
 ## `constants.py`
@@ -53,7 +53,7 @@ Shared constants and tiny helpers for review-driven-development.
 
 ## `context_inventory.py`
 
-Context inventory helper for review-driven-development.
+Context inventory, cache, and context-pack helper for review-driven-development.
 
 | Symbol | Type | Contract role |
 |---|---|---|
@@ -65,13 +65,38 @@ Context inventory helper for review-driven-development.
 | `count_languages` | function | Count detected source languages. |
 | `group_paths` | function | Group paths into source/doc/data/test/build categories. |
 | `read_text_snippet` | function | Read a small UTF-8 snippet, returning empty string for binary/failed reads. |
+| `tokenize_for_index` | function | Return stable high-signal terms for a semantic locator index. |
+| `extract_symbols` | function | Extract shallow function/class/interface symbols from one text file. |
+| `split_identifier_terms` | function | Expand snake/camel/path identifiers into searchable terms. |
+| `build_search_text` | function | Build bounded text used by semantic ranking backends. |
+| `sklearn_available` | function | Return True when scikit-learn semantic ranking can be used. |
+| `sentence_transformers_available` | function | Return True when dense embedding ranking can be used. |
+| `encode_embedding_texts` | function | Encode texts with SentenceTransformers, returning JSON-serializable vectors. |
+| `dot_score` | function | Return cosine score for normalized vectors, or dot-product fallback. |
 | `collect_doc_snippets` | function | Collect snippets from key Markdown/spec files. |
+| `prioritize_paths` | function | Return paths ordered for compact Codex context consumption. |
+| `unique_ordered` | function | Return unique paths while preserving the incoming order. |
+| `build_file_fingerprint` | function | Build a cheap project fingerprint without reading file contents. |
+| `build_semantic_index` | function | Build a bounded lexical/symbol index for quick file location. |
+| `summarize_semantic_index` | function | Return compact semantic index metadata for context packs and cache. |
+| `search_semantic_index` | function | Rank semantic index files for a query using TF-IDF when available. |
 | `infer_frameworks` | function | Infer likely frameworks from manifests and build files. |
 | `choose_recommended_critics` | function | Choose critic roles based on the inventory. |
 | `build_inventory` | function | Build the full project context inventory. |
+| `build_context_pack` | function | Build a compact Markdown pack optimized for quick Codex reference. |
 | `summarize_inventory` | function | Return a human-readable summary for prompts and briefs. |
 | `save_inventory` | function | Save context inventory under project state. |
+| `save_context_pack` | function | Save a compact Markdown context pack for fast Codex loading. |
+| `save_context_cache` | function | Save cache metadata used to reuse inventory and context packs safely. |
+| `save_semantic_index` | function | Save the semantic locator index under project state. |
 | `load_inventory` | function | Load saved context inventory if it exists. |
+| `load_context_pack` | function | Load the compact context pack if present. |
+| `load_context_cache` | function | Load context cache metadata if present and parseable. |
+| `load_semantic_index` | function | Load the semantic locator index if present and parseable. |
+| `detect_context_script` | function | Return the best repo-local context inventory command path. |
+| `build_bootstrap_block` | function | Build an AGENTS.md block that injects fast context instructions. |
+| `write_bootstrap` | function | Insert or replace the RDD fast-context bootstrap block in a repo file. |
+| `sync_context` | function | Reuse valid context cache or rebuild inventory and compact context pack. |
 | `main` | function | CLI entrypoint for context inventory generation. |
 
 ## `critic_ledger.py`
@@ -319,6 +344,12 @@ High-level workflow orchestration preview.
 | Symbol | Type | Contract role |
 |---|---|---|
 | `run_context_phase` | function | Inventory project context and build a requirement packet. |
+| `run_sync_phase` | function | Synchronize inventory/cache/context-pack state for fast reuse. |
+| `run_overview_phase` | function | Return the compact context pack for quick Codex reference. |
+| `run_semantic_index_phase` | function | Return the bounded semantic locator index for quick file lookup. |
+| `run_semantic_search_phase` | function | Return ranked likely files for a semantic query. |
+| `run_bootstrap_phase` | function | Write repo-local fast-context bootstrap guidance. |
+| `run_commands_phase` | function | Return common RDD commands for context/cache/TODO/quality UX. |
 | `needs_first_run` | function | Return True when defaults are missing. |
 | `build_first_run_action` | function | Return the action the main agent should take for first-run setup. |
 | `run_preplan_critique_phase` | function | Write preplan critical-only subagent briefs. |
@@ -346,7 +377,8 @@ End-to-end standard-library smoke workflow validation.
 python -m compileall skills/review-driven-development/scripts
 python skills/review-driven-development/scripts/validate_skill.py --skill-dir skills/review-driven-development
 python skills/review-driven-development/scripts/skill_registration.py --validate-only
-python skills/review-driven-development/scripts/context_inventory.py --root . --summary
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --summary
+python skills/review-driven-development/scripts/workflow_runner.py --root . --phase overview
 python skills/review-driven-development/scripts/self_test.py
 pytest -q
 ```
