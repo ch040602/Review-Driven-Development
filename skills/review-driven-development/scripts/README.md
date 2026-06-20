@@ -27,10 +27,13 @@ python skills/review-driven-development/scripts/context_inventory.py --root . --
 python skills/review-driven-development/scripts/context_inventory.py --root . --sync --overview
 python skills/review-driven-development/scripts/context_inventory.py --root . --sync --semantic-summary
 python skills/review-driven-development/scripts/context_inventory.py --root . --sync --semantic-search "quality gate completion"
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --role-map
 python skills/review-driven-development/scripts/context_inventory.py --root . --sync --bootstrap
 python skills/review-driven-development/scripts/workflow_runner.py --root . --phase overview
 python skills/review-driven-development/scripts/workflow_runner.py --root . --phase semantic-index
 python skills/review-driven-development/scripts/workflow_runner.py --root . --phase semantic-search --query "quality gate completion"
+python skills/review-driven-development/scripts/workflow_runner.py --root . --phase role-map
+python skills/review-driven-development/scripts/workflow_runner.py --root . --phase validation --todo-id RDD-T-00000001 --agent-budget spark-first
 python skills/review-driven-development/scripts/workflow_runner.py --root . --phase bootstrap
 python skills/review-driven-development/scripts/workflow_runner.py --root . --phase commands
 ```

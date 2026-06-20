@@ -119,11 +119,14 @@ python skills/review-driven-development/scripts/context_inventory.py --root . --
 python skills/review-driven-development/scripts/context_inventory.py --root . --sync --overview
 python skills/review-driven-development/scripts/context_inventory.py --root . --sync --semantic-summary
 python skills/review-driven-development/scripts/context_inventory.py --root . --sync --semantic-search "quality gate completion"
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --role-map
 python skills/review-driven-development/scripts/context_inventory.py --root . --sync --bootstrap
 python skills/review-driven-development/scripts/workflow_runner.py --root . --phase commands
 ```
 
-Codex는 `.codex/review-driven-development/context-pack.md`를 먼저 읽고, `--semantic-search "<query>"`로 관련 파일을 ranking한 뒤, active TODO가 가리키는 source/docs만 추가로 여는 방식으로 메모리를 아낍니다. 기본 ranking은 `scikit-learn` TF-IDF가 설치되어 있으면 이를 쓰고, 없으면 lexical overlap을 씁니다. dense `sentence-transformers` ranking은 모델 로드 비용을 감수할 때 `--embeddings`로 명시 opt-in합니다. `--sync --bootstrap`은 repo-local `AGENTS.md`에 marker-managed 자동 주입 block을 추가합니다.
+Codex는 `.codex/review-driven-development/context-pack.md`를 먼저 읽고, `Role map`에서 책임 경계를 확인한 뒤, 필요할 때만 query hint 하나를 `--semantic-search "<query>"`로 실행합니다. 그 다음 active TODO가 가리키는 source/docs만 추가로 여는 방식으로 메모리를 아낍니다. 기본 ranking은 `scikit-learn` TF-IDF가 설치되어 있으면 이를 쓰고, 없으면 lexical overlap을 씁니다. dense `sentence-transformers` ranking은 모델 로드 비용을 감수할 때 `--embeddings`로 명시 opt-in합니다. `--sync --role-map`은 같은 책임 지도를 JSON으로 출력하고, `--sync --bootstrap`은 repo-local `AGENTS.md`에 marker-managed 자동 주입 block을 추가합니다.
+
+Subagent brief는 기본적으로 `--agent-budget spark-first`를 사용합니다. 반복적인 구조화 critic은 `codex-spark`로 자주 돌리고, cross-file 추론은 `codex-standard`, security/data/architecture 또는 명시적 deep review는 `codex-deep`으로 올립니다. spark pass가 blocker/high 불확실성을 찾으면 전체 subagent를 올리지 말고 해당 role만 다음 tier로 재실행합니다.
 
 기본 `self_test.py`는 CI 안정성을 위해 embedding model load를 피합니다. 실제 embedding smoke check는 명시적으로 실행합니다.
 

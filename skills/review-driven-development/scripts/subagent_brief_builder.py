@@ -36,6 +36,14 @@ class RoleSpec:
     required_evidence: str
 
 
+@dataclass(frozen=True)
+class AgentAllocation:
+    """Recommended intelligence tier for a critical-only subagent."""
+    tier: str
+    reason: str
+    escalate_when: str
+
+
 ROLE_SPECS: Dict[str, RoleSpec] = {
     "requirements-critic": RoleSpec("requirements-critic", "preplan", "Ambiguous, conflicting, missing, or unverifiable requirements.", "Requirement text, source files, docs, user answers."),
     "language-runtime-critic": RoleSpec("language-runtime-critic", "preplan", "Language/runtime tradeoffs, ecosystem fit, deployment constraints.", "Detected languages, build files, user constraints."),
@@ -65,6 +73,34 @@ CRITIC_DEPTH_LIMITS = {
     "minimal": 2,
     "standard": 4,
     "deep": 99,
+}
+AGENT_BUDGETS = {
+    "spark-first": "Prefer codex-spark for frequent structured checks; escalate only on concrete risk signals.",
+    "balanced": "Use codex-spark for narrow checks, codex-standard for cross-file or uncertain reasoning, and codex-deep for high-risk roles.",
+    "deep": "Prefer stronger subagents for broad or high-risk reviews while still allowing codex-spark for mechanical docs/tests checks.",
+}
+SPARK_FRIENDLY_ROLES = {
+    "requirements-critic",
+    "test-tdd-critic",
+    "documentation-critic",
+    "markdown-doc-context-critic",
+    "validation-runner-critic",
+    "maintainability-critic",
+    "quality-critic",
+    "greenfield-scope-critic",
+}
+STANDARD_ROLES = {
+    "language-runtime-critic",
+    "existing-code-reuse-refactor-critic",
+    "source-driven-framework-critic",
+    "source-grounding-critic",
+    "performance-efficiency-critic",
+    "accuracy-evaluation-critic",
+}
+DEEP_RISK_ROLES = {
+    "architecture-critic",
+    "security-risk-critic",
+    "data-csv-critic",
 }
 
 CRITICAL_CONTRACT = """You are a critical-only subagent for review-driven-development.
@@ -156,6 +192,118 @@ def role_list_for_phase(
     return roles[:max(1, cap)]
 
 
+def agent_allocation_for_role(
+    role: str,
+    phase: str,
+    inventory: Optional[Mapping[str, Any]] = None,
+    *,
+    critic_depth: str = "standard",
+    agent_budget: str = "spark-first",
+) -> AgentAllocation:
+    """Choose a subagent intelligence tier from role and risk signals.
+
+    The returned tier is a routing hint for the main agent or external
+    orchestrator. It does not launch agents and does not weaken the critical-only
+    contract.
+    """
+
+    if critic_depth not in CRITIC_DEPTH_LIMITS:
+        raise ValueError(f"Unknown critic depth: {critic_depth}. Expected one of {sorted(CRITIC_DEPTH_LIMITS)}")
+    if agent_budget not in AGENT_BUDGETS:
+        raise ValueError(f"Unknown agent budget: {agent_budget}. Expected one of {sorted(AGENT_BUDGETS)}")
+
+    has_security_signal = bool(inventory and inventory.get("needs_security_critic"))
+    has_data_signal = bool(inventory and inventory.get("requires_data_critic"))
+    high_risk_role = role in DEEP_RISK_ROLES
+    broad_reasoning_role = role in STANDARD_ROLES or role == "architecture-critic"
+    structured_role = role in SPARK_FRIENDLY_ROLES
+
+    if agent_budget == "deep":
+        if high_risk_role or critic_depth == "deep":
+            return AgentAllocation(
+                "codex-deep",
+                "deep budget or high-risk role requires stronger cross-file reasoning",
+                "Already escalated; reduce only after evidence proves the risk is local and mechanical.",
+            )
+        if structured_role:
+            return AgentAllocation(
+                "codex-spark",
+                "structured checklist role remains cheap even in deep budget",
+                "Escalate if it reports ambiguity, missing evidence, or cross-module coupling.",
+            )
+        return AgentAllocation(
+            "codex-standard",
+            "deep budget keeps non-mechanical reasoning above spark",
+            "Escalate to codex-deep if blocker/high uncertainty remains after the first pass.",
+        )
+
+    if agent_budget == "balanced":
+        if high_risk_role and (critic_depth == "deep" or has_security_signal or has_data_signal):
+            return AgentAllocation(
+                "codex-deep",
+                "balanced budget escalates concrete security/data/architecture risk",
+                "Reduce only when the inventory signal is false positive.",
+            )
+        if structured_role:
+            return AgentAllocation(
+                "codex-spark",
+                "structured local checklist can run frequently at low cost",
+                "Escalate if the checklist finds unresolved high-risk ambiguity.",
+            )
+        return AgentAllocation(
+            "codex-standard",
+            "balanced budget uses standard reasoning for non-mechanical review",
+            "Escalate to codex-deep for broad migration, security, data, or architecture blockers.",
+        )
+
+    # spark-first
+    if high_risk_role and critic_depth == "deep":
+        return AgentAllocation(
+            "codex-deep",
+            "deep critic depth overrides spark-first for high-risk roles",
+            "Drop to codex-standard only if the main agent records a narrower risk boundary.",
+        )
+    if high_risk_role or broad_reasoning_role:
+        return AgentAllocation(
+            "codex-standard",
+            "role or inventory signal needs more reasoning than a frequent checklist pass",
+            "Escalate to codex-deep if security/data/architecture risk remains unresolved.",
+        )
+    return AgentAllocation(
+        "codex-spark",
+        "default low-cost tier for frequent structured critical checks",
+        "Escalate if findings mention blocker/high severity, unclear requirements, or cross-file coupling.",
+    )
+
+
+def allocation_table_for_roles(
+    roles: Iterable[str],
+    phase: str,
+    inventory: Optional[Mapping[str, Any]] = None,
+    *,
+    critic_depth: str = "standard",
+    agent_budget: str = "spark-first",
+) -> List[Dict[str, str]]:
+    """Return routing hints for a role list."""
+
+    rows: List[Dict[str, str]] = []
+    for role in roles:
+        allocation = agent_allocation_for_role(
+            role,
+            phase,
+            inventory,
+            critic_depth=critic_depth,
+            agent_budget=agent_budget,
+        )
+        rows.append({
+            "role": role,
+            "agent_tier": allocation.tier,
+            "reason": allocation.reason,
+            "escalate_when": allocation.escalate_when,
+        })
+    return rows
+
+
 def compact_context_summary(context_summary: str, max_chars: int) -> str:
     """Bound context embedded in generated briefs."""
 
@@ -175,9 +323,18 @@ def build_brief(
     inventory: Optional[Mapping[str, Any]] = None,
     *,
     context_max_chars: int = 1200,
+    critic_depth: str = "standard",
+    agent_budget: str = "spark-first",
 ) -> str:
     """Build a Markdown prompt for one critical-only subagent."""
     spec = get_role_spec(role, phase)
+    allocation = agent_allocation_for_role(
+        role,
+        phase,
+        inventory,
+        critic_depth=critic_depth,
+        agent_budget=agent_budget,
+    )
     inventory_note = ""
     if inventory:
         inventory_note = "\n## Inventory hints\n\n" + json.dumps({
@@ -207,6 +364,12 @@ def build_brief(
 
 {CRITICAL_CONTRACT}
 
+## Agent allocation hint
+
+- Recommended tier: `{allocation.tier}`
+- Reason: {allocation.reason}
+- Escalate when: {allocation.escalate_when}
+
 ## Role-specific focus
 
 {spec.focus}
@@ -235,8 +398,11 @@ def write_briefs(
     critic_depth: str = "standard",
     max_roles: int | None = None,
     context_max_chars: int = 1200,
+    agent_budget: str = "spark-first",
 ) -> List[Path]:
     """Write critical-only briefs for one phase."""
+    if agent_budget not in AGENT_BUDGETS:
+        raise ValueError(f"Unknown agent budget: {agent_budget}. Expected one of {sorted(AGENT_BUDGETS)}")
     inventory = load_inventory(root)
     selected_roles = (
         list(roles)
@@ -249,7 +415,16 @@ def write_briefs(
     for role in selected_roles:
         path = directory / f"{role}.md"
         path.write_text(
-            build_brief(role, phase, todo_id, context_summary, inventory, context_max_chars=context_max_chars),
+            build_brief(
+                role,
+                phase,
+                todo_id,
+                context_summary,
+                inventory,
+                context_max_chars=context_max_chars,
+                critic_depth=critic_depth,
+                agent_budget=agent_budget,
+            ),
             encoding="utf-8",
         )
         paths.append(path)
@@ -299,6 +474,7 @@ def main() -> None:
     parser.add_argument("--critic-depth", choices=sorted(CRITIC_DEPTH_LIMITS), default="standard")
     parser.add_argument("--max-roles", type=int)
     parser.add_argument("--context-max-chars", type=int, default=1200)
+    parser.add_argument("--agent-budget", choices=sorted(AGENT_BUDGETS), default="spark-first")
     args = parser.parse_args()
     paths = write_briefs(
         Path(args.root).resolve(),
@@ -309,6 +485,7 @@ def main() -> None:
         critic_depth=args.critic_depth,
         max_roles=args.max_roles,
         context_max_chars=args.context_max_chars,
+        agent_budget=args.agent_budget,
     )
     for path in paths:
         print(path)

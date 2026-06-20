@@ -98,6 +98,56 @@ SECURITY_MARKERS = (
     "oauth", "password", "permission", "policy", "refresh_token", "secret",
     "security",
 )
+ROLE_PROFILES: List[Dict[str, Any]] = [
+    {
+        "role": "context-discovery",
+        "purpose": "Inventory, cache reuse, context-pack generation, semantic lookup, and bootstrap guidance.",
+        "patterns": ("context_inventory.py", "context-pack", "context-cache", "context-semantic-index", "AGENTS.md"),
+        "queries": ("context cache semantic search file discovery", "bootstrap context pack stale inventory"),
+    },
+    {
+        "role": "workflow-orchestration",
+        "purpose": "High-level RDD phases, first-run routing, TODO execution flow, validation, docs, and command UX.",
+        "patterns": ("workflow_runner.py", "workflow.md", "commands"),
+        "queries": ("workflow phase validation documentation improvement", "run once preplan execution commands"),
+    },
+    {
+        "role": "critic-briefs",
+        "purpose": "Critical-only subagent role selection, depth caps, brief construction, and finding templates.",
+        "patterns": ("subagent_brief_builder.py", "subagent-roles.md", "critic", "brief"),
+        "queries": ("critic role depth brief context cap", "subagent findings validation critic"),
+    },
+    {
+        "role": "todo-ledger",
+        "purpose": "Append-only TODO lifecycle, evidence, review records, documentation gates, and completion checks.",
+        "patterns": ("todo_manager.py", "todo-policy.md", "todos.jsonl", "TODO"),
+        "queries": ("todo evidence review documentation completion gate", "in progress pending blocked completed"),
+    },
+    {
+        "role": "quality-validation",
+        "purpose": "Quality gate command selection, validation reports, smoke workflow, and regression tests.",
+        "patterns": ("quality_gate.py", "self_test.py", "test_smoke_workflow.py", "tests/", "VALIDATION.md"),
+        "queries": ("quality gate validation report pytest smoke workflow", "regression tests completion evidence"),
+    },
+    {
+        "role": "state-defaults",
+        "purpose": "Project defaults, first-run profile storage, requirement packet analysis, and persistent state.",
+        "patterns": ("rdd_state.py", "requirement_analyzer.py", "first-run", "defaults.json", "profile.md"),
+        "queries": ("first run defaults profile requirement packet", "project assumptions saved state"),
+    },
+    {
+        "role": "external-skill-routing",
+        "purpose": "Optional companion skill registry, external skill URLs, and source-grounded skill invocation policy.",
+        "patterns": ("external_skill_registry.py", "external-skills", "external-skill-links", "internal-skill-map"),
+        "queries": ("external skill registry companion skill source link", "agentic rag optional skills"),
+    },
+    {
+        "role": "docs-contracts",
+        "purpose": "User-facing README, script contracts, state schema, documentation policy, and contribution rules.",
+        "patterns": ("README", "script-contracts.md", "function-scaffold.md", "state-schema.md", "documentation-policy.md", "CONTRIBUTING.md"),
+        "queries": ("script contract state schema documentation policy", "readme install usage validation"),
+    },
+]
 
 
 def now_iso() -> str:
@@ -344,6 +394,56 @@ def inventory_limits(mode: str, max_files: int | None = None) -> Dict[str, int]:
     if max_files is not None:
         limits["max_files"] = max_files
     return limits
+
+
+def role_profile_for_path(path: str) -> Dict[str, Any] | None:
+    """Return the first role profile matching a path or known task term."""
+
+    lowered = path.lower()
+    for profile in ROLE_PROFILES:
+        if any(str(pattern).lower() in lowered for pattern in profile["patterns"]):
+            return profile
+    return None
+
+
+def build_role_map(inventory: Mapping[str, Any], *, max_paths_per_role: int = 6) -> List[Dict[str, Any]]:
+    """Build a compact file responsibility map for future targeted exploration."""
+
+    candidates = unique_ordered(prioritize_paths([
+        *list(inventory.get("source_files_sample", [])),
+        *list(inventory.get("tests", [])),
+        *list(inventory.get("docs", [])),
+        *list(inventory.get("build_files", [])),
+    ]))
+    roles: Dict[str, Dict[str, Any]] = {}
+    for path in candidates:
+        profile = role_profile_for_path(path)
+        if profile is None:
+            continue
+        role = str(profile["role"])
+        item = roles.setdefault(
+            role,
+            {
+                "role": role,
+                "purpose": profile["purpose"],
+                "paths": [],
+                "queries": list(profile["queries"])[:2],
+            },
+        )
+        if len(item["paths"]) < max_paths_per_role:
+            item["paths"].append(path)
+    return [roles[profile["role"]] for profile in ROLE_PROFILES if profile["role"] in roles]
+
+
+def format_role_map(role_map: Iterable[Mapping[str, Any]], *, max_roles: int = 8, max_paths: int = 4) -> List[str]:
+    """Return compact Markdown lines for a role map."""
+
+    lines: List[str] = []
+    for item in list(role_map)[:max_roles]:
+        paths = ", ".join(f"`{path}`" for path in list(item.get("paths", []))[:max_paths])
+        queries = "; ".join(str(query) for query in list(item.get("queries", []))[:2])
+        lines.append(f"- **{item.get('role')}**: {item.get('purpose')} Paths: {paths or 'none'}. Query hints: `{queries}`")
+    return lines or ["- none detected"]
 
 
 def build_file_fingerprint(root: Path, max_files: int = 5000) -> Dict[str, Any]:
@@ -649,6 +749,7 @@ def build_inventory(
             max_chars=limits["doc_snippet_chars"],
         )
     data["recommended_critics"] = choose_recommended_critics(data)
+    data["role_map"] = build_role_map(data)
     return data
 
 
@@ -691,6 +792,10 @@ def build_context_pack(data: Mapping[str, Any], *, max_chars: int = 12000) -> st
             f"- Top semantic terms: `{', '.join(list(semantic.get('top_terms', []))[:12])}`",
         ])
     sections.extend([
+        "",
+        "## Role map",
+        "Use this map before opening source trees; jump to the matching role path or run one query hint with `--semantic-search`.",
+        *format_role_map(data.get("role_map", [])),
         "",
         "## Build files",
         *_markdown_list(data.get("build_files", []), 25),
@@ -883,6 +988,7 @@ def build_bootstrap_block(root: Path, *, context_script: str | None = None) -> s
         "- Read `.codex/review-driven-development/context-pack.md` before opening broad source trees.",
         f"- Run `python {script} --root . --sync --semantic-search \"<query>\"` to rank likely files before broad search.",
         "- Use `.codex/review-driven-development/context-semantic-index.json` for file, symbol, term, and optional dense-vector lookup.",
+        "- Use the `Role map` section in `context-pack.md` before opening source trees; it lists responsibility boundaries and query hints.",
         "- Default ranking uses scikit-learn TF-IDF when installed, then lexical overlap; dense sentence-transformers ranking is opt-in with `--embeddings`.",
         "- Open the full source files referenced by the active TODO before editing; the semantic index is a locator, not proof.",
         "- Keep validation evidence, independent review, and documentation status in the TODO ledger before completion.",
@@ -996,6 +1102,7 @@ def main() -> None:
     parser.add_argument("--semantic-index", action="store_true", help="Print the semantic locator index")
     parser.add_argument("--semantic-summary", action="store_true", help="Print compact semantic locator index metadata")
     parser.add_argument("--semantic-search", help="Rank likely files for this query using the semantic index")
+    parser.add_argument("--role-map", action="store_true", help="Print compact file responsibility map")
     parser.add_argument("--top-k", type=int, default=8)
     parser.add_argument("--force-lexical", action="store_true", help="Force lexical fallback ranking for semantic search")
     parser.add_argument("--force-tfidf", action="store_true", help="Skip embedding ranking and force TF-IDF when available")
@@ -1021,6 +1128,8 @@ def main() -> None:
             print(json.dumps(summarize_semantic_index(load_semantic_index(root) or {}), ensure_ascii=False, indent=2))
         elif args.semantic_search:
             print(json.dumps(search_semantic_index(args.semantic_search, load_semantic_index(root) or {}, top_k=args.top_k, force_fallback=args.force_lexical, force_tfidf=args.force_tfidf, force_lexical=args.force_lexical, embedding_model=args.embedding_model), ensure_ascii=False, indent=2))
+        elif args.role_map:
+            print(json.dumps(result["context_inventory"].get("role_map", []), ensure_ascii=False, indent=2))
         elif args.overview:
             print(load_context_pack(root) or summarize_inventory(result["context_inventory"]))
         elif args.summary:
@@ -1044,6 +1153,8 @@ def main() -> None:
             data["cache_path"] = str(save_context_cache(root, data, inventory_path=inventory_path, pack_path=Path(data["context_pack_path"])))
     if args.overview:
         print(build_context_pack(data, max_chars=args.max_pack_chars))
+    elif args.role_map:
+        print(json.dumps(data.get("role_map", []), ensure_ascii=False, indent=2))
     else:
         print(summarize_inventory(data) if args.summary else json.dumps(data, ensure_ascii=False, indent=2))
 

@@ -19,7 +19,7 @@ try:
     from .quality_gate import build_report, load_commands, save_report, select_commands
     from .rdd_state import ensure_state, load_defaults
     from .requirement_analyzer import create_requirement_packet, packet_to_dict
-    from .subagent_brief_builder import write_briefs
+    from .subagent_brief_builder import allocation_table_for_roles, write_briefs
     from .todo_manager import create_todo, start_next_todo
 except ImportError:  # pragma: no cover
     from context_inventory import load_context_pack, load_semantic_index, search_semantic_index, summarize_inventory, summarize_semantic_index, sync_context, write_bootstrap  # type: ignore
@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover
     from quality_gate import build_report, load_commands, save_report, select_commands  # type: ignore
     from rdd_state import ensure_state, load_defaults  # type: ignore
     from requirement_analyzer import create_requirement_packet, packet_to_dict  # type: ignore
-    from subagent_brief_builder import write_briefs  # type: ignore
+    from subagent_brief_builder import allocation_table_for_roles, write_briefs  # type: ignore
     from todo_manager import create_todo, start_next_todo  # type: ignore
 
 
@@ -162,6 +162,28 @@ def run_semantic_search_phase(
     }
 
 
+def run_role_map_phase(
+    root: Path,
+    *,
+    inventory_mode: str = "standard",
+    include_snippets: bool = False,
+    enable_embeddings: bool = False,
+    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2",
+) -> Dict[str, object]:
+    """Return compact file responsibility map for targeted exploration."""
+
+    ensure_state(root)
+    sync = sync_context(root, mode=inventory_mode, include_snippets=include_snippets, enable_embeddings=enable_embeddings, embedding_model=embedding_model)
+    role_map = sync["context_inventory"].get("role_map", [])
+    return {
+        "phase": "role-map",
+        "cache_hit": sync["cache_hit"],
+        "context_pack_path": sync["context_pack_path"],
+        "role_map": role_map,
+        "main_agent_next": "Pick one role path or query hint before opening any broader source tree.",
+    }
+
+
 def run_bootstrap_phase(
     root: Path,
     *,
@@ -205,17 +227,20 @@ def run_commands_phase(root: Path, todo_id: Optional[str] = None) -> Dict[str, o
             "python skills/review-driven-development/scripts/context_inventory.py --root . --sync --overview",
             "python skills/review-driven-development/scripts/context_inventory.py --root . --sync --semantic-summary",
             "python skills/review-driven-development/scripts/context_inventory.py --root . --sync --semantic-search \"<query>\"",
+            "python skills/review-driven-development/scripts/context_inventory.py --root . --sync --role-map",
             "python skills/review-driven-development/scripts/context_inventory.py --root . --sync --semantic-search \"<query>\" --force-tfidf",
             "python skills/review-driven-development/scripts/context_inventory.py --root . --sync --semantic-search \"<query>\" --force-lexical",
             "python skills/review-driven-development/scripts/context_inventory.py --root . --sync --bootstrap",
             "python skills/review-driven-development/scripts/workflow_runner.py --root . --phase overview",
             "python skills/review-driven-development/scripts/workflow_runner.py --root . --phase semantic-index",
             "python skills/review-driven-development/scripts/workflow_runner.py --root . --phase semantic-search --query \"<query>\"",
+            "python skills/review-driven-development/scripts/workflow_runner.py --root . --phase role-map",
             "python skills/review-driven-development/scripts/workflow_runner.py --root . --phase bootstrap",
         ],
         "workflow": [
             "python skills/review-driven-development/scripts/workflow_runner.py --root . --phase sync",
             "python skills/review-driven-development/scripts/workflow_runner.py --root . --phase once --prompt \"<requirement>\"",
+            "python skills/review-driven-development/scripts/workflow_runner.py --root . --phase validation --todo-id <id> --agent-budget spark-first",
             "python skills/review-driven-development/scripts/workflow_runner.py --root . --phase commands",
         ],
         "quality": {
@@ -254,6 +279,7 @@ def run_preplan_critique_phase(
     critic_depth: str = "standard",
     max_roles: int | None = None,
     context_max_chars: int = 1200,
+    agent_budget: str = "spark-first",
 ) -> Dict[str, object]:
     """Write preplan critical-only subagent briefs."""
 
@@ -265,11 +291,15 @@ def run_preplan_critique_phase(
         critic_depth=critic_depth,
         max_roles=max_roles,
         context_max_chars=context_max_chars,
+        agent_budget=agent_budget,
     )
+    roles = [Path(path).stem for path in paths]
     return {
         "phase": "preplan",
         "brief_paths": [str(path) for path in paths],
         "critic_depth": critic_depth,
+        "agent_budget": agent_budget,
+        "agent_allocations": allocation_table_for_roles(roles, "preplan", critic_depth=critic_depth, agent_budget=agent_budget),
         "main_agent_next": "Run only the generated critical briefs, collect findings, then decide.",
     }
 
@@ -317,6 +347,7 @@ def run_validation_phase(
     critic_depth: str = "standard",
     max_roles: int | None = None,
     context_max_chars: int = 1200,
+    agent_budget: str = "spark-first",
 ) -> Dict[str, object]:
     """Prepare validation evidence and critical validation briefs."""
 
@@ -331,8 +362,15 @@ def run_validation_phase(
         critic_depth=critic_depth,
         max_roles=max_roles,
         context_max_chars=context_max_chars,
+        agent_budget=agent_budget,
     )
-    return {"validation_report": str(report_path), "brief_paths": [str(path) for path in brief_paths]}
+    roles = [Path(path).stem for path in brief_paths]
+    return {
+        "validation_report": str(report_path),
+        "brief_paths": [str(path) for path in brief_paths],
+        "agent_budget": agent_budget,
+        "agent_allocations": allocation_table_for_roles(roles, "validation", critic_depth=critic_depth, agent_budget=agent_budget),
+    }
 
 
 def run_documentation_phase(root: Path, todo_id: str, changed_files: Optional[List[str]] = None) -> Dict[str, object]:
@@ -351,6 +389,7 @@ def run_improvement_phase(
     critic_depth: str = "standard",
     max_roles: int | None = None,
     context_max_chars: int = 1200,
+    agent_budget: str = "spark-first",
 ) -> Dict[str, object]:
     """Write improvement critical-only subagent briefs."""
 
@@ -362,11 +401,15 @@ def run_improvement_phase(
         critic_depth=critic_depth,
         max_roles=max_roles,
         context_max_chars=context_max_chars,
+        agent_budget=agent_budget,
     )
+    roles = [Path(path).stem for path in paths]
     return {
         "phase": "improvement",
         "brief_paths": [str(path) for path in paths],
         "critic_depth": critic_depth,
+        "agent_budget": agent_budget,
+        "agent_allocations": allocation_table_for_roles(roles, "improvement", critic_depth=critic_depth, agent_budget=agent_budget),
         "main_agent_next": "Accept/reject/defer improvement findings and update TODOs.",
     }
 
@@ -380,6 +423,7 @@ def run_once(
     critic_depth: str = "standard",
     max_roles: int | None = None,
     context_max_chars: int = 1200,
+    agent_budget: str = "spark-first",
     enable_embeddings: bool = False,
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2",
 ) -> Dict[str, object]:
@@ -411,6 +455,7 @@ def run_once(
         critic_depth=critic_depth,
         max_roles=max_roles,
         context_max_chars=context_max_chars,
+        agent_budget=agent_budget,
     )
     result["todo_generation"] = run_todo_generation_phase(root)
     result["execution"] = run_execution_phase(root)
@@ -421,9 +466,9 @@ def run_once(
             "instruction": "Main agent must implement the active TODO with test-driven-development before validation/documentation/improvement phases.",
             "after_implementation_commands": [
                 f"python skills/review-driven-development/scripts/quality_gate.py --root . --todo-id {todo_id} --kinds test,lint,build --record-todo-evidence",
-                f"python skills/review-driven-development/scripts/workflow_runner.py --root . --phase validation --todo-id {todo_id} --critic-depth {critic_depth}",
+                f"python skills/review-driven-development/scripts/workflow_runner.py --root . --phase validation --todo-id {todo_id} --critic-depth {critic_depth} --agent-budget {agent_budget}",
                 f"python skills/review-driven-development/scripts/workflow_runner.py --root . --phase documentation --todo-id {todo_id}",
-                f"python skills/review-driven-development/scripts/workflow_runner.py --root . --phase improvement --todo-id {todo_id} --critic-depth {critic_depth}",
+                f"python skills/review-driven-development/scripts/workflow_runner.py --root . --phase improvement --todo-id {todo_id} --critic-depth {critic_depth} --agent-budget {agent_budget}",
             ],
         }
     return result
@@ -435,7 +480,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Preview review-driven-development orchestration.")
     parser.add_argument("--root", default=".")
     parser.add_argument("--prompt", default="")
-    parser.add_argument("--phase", choices=["once", "context", "sync", "overview", "semantic-index", "semantic-search", "bootstrap", "commands", "first-run", "preplan", "todo-generation", "execution", "validation", "documentation", "improvement"], default="once")
+    parser.add_argument("--phase", choices=["once", "context", "sync", "overview", "semantic-index", "semantic-search", "role-map", "bootstrap", "commands", "first-run", "preplan", "todo-generation", "execution", "validation", "documentation", "improvement"], default="once")
     parser.add_argument("--todo-id")
     parser.add_argument("--query", default="")
     parser.add_argument("--top-k", type=int, default=8)
@@ -446,6 +491,7 @@ def main() -> None:
     parser.add_argument("--critic-depth", choices=["minimal", "standard", "deep"], default="standard")
     parser.add_argument("--max-roles", type=int)
     parser.add_argument("--context-max-chars", type=int, default=1200)
+    parser.add_argument("--agent-budget", choices=["spark-first", "balanced", "deep"], default="spark-first")
     parser.add_argument("--embeddings", action="store_true")
     parser.add_argument("--no-embeddings", action="store_true")
     parser.add_argument("--embedding-model", default="sentence-transformers/all-MiniLM-L6-v2")
@@ -465,6 +511,7 @@ def main() -> None:
             critic_depth=args.critic_depth,
             max_roles=args.max_roles,
             context_max_chars=args.context_max_chars,
+            agent_budget=args.agent_budget,
             enable_embeddings=enable_embeddings,
             embedding_model=args.embedding_model,
         )
@@ -480,6 +527,8 @@ def main() -> None:
         if not args.query:
             raise SystemExit("--query is required for semantic-search phase")
         result = run_semantic_search_phase(root, args.query, top_k=args.top_k, inventory_mode=args.inventory_mode, include_snippets=args.include_snippets, enable_embeddings=enable_embeddings, embedding_model=args.embedding_model, force_tfidf=args.force_tfidf, force_lexical=args.force_lexical)
+    elif args.phase == "role-map":
+        result = run_role_map_phase(root, inventory_mode=args.inventory_mode, include_snippets=args.include_snippets, enable_embeddings=enable_embeddings, embedding_model=args.embedding_model)
     elif args.phase == "bootstrap":
         result = run_bootstrap_phase(root, target=args.bootstrap_target, force=args.force, inventory_mode=args.inventory_mode, include_snippets=args.include_snippets, enable_embeddings=enable_embeddings, embedding_model=args.embedding_model)
     elif args.phase == "commands":
@@ -487,7 +536,7 @@ def main() -> None:
     elif args.phase == "first-run":
         result = build_first_run_action(root, args.prompt)
     elif args.phase == "preplan":
-        result = run_preplan_critique_phase(root, args.prompt or "preplan critique", critic_depth=args.critic_depth, max_roles=args.max_roles, context_max_chars=args.context_max_chars)
+        result = run_preplan_critique_phase(root, args.prompt or "preplan critique", critic_depth=args.critic_depth, max_roles=args.max_roles, context_max_chars=args.context_max_chars, agent_budget=args.agent_budget)
     elif args.phase == "todo-generation":
         result = run_todo_generation_phase(root)
     elif args.phase == "execution":
@@ -495,7 +544,7 @@ def main() -> None:
     elif args.phase == "validation":
         if not args.todo_id:
             raise SystemExit("--todo-id is required for validation phase")
-        result = run_validation_phase(root, args.todo_id, critic_depth=args.critic_depth, max_roles=args.max_roles, context_max_chars=args.context_max_chars)
+        result = run_validation_phase(root, args.todo_id, critic_depth=args.critic_depth, max_roles=args.max_roles, context_max_chars=args.context_max_chars, agent_budget=args.agent_budget)
     elif args.phase == "documentation":
         if not args.todo_id:
             raise SystemExit("--todo-id is required for documentation phase")
@@ -503,7 +552,7 @@ def main() -> None:
     elif args.phase == "improvement":
         if not args.todo_id:
             raise SystemExit("--todo-id is required for improvement phase")
-        result = run_improvement_phase(root, args.todo_id, args.prompt or "Review implementation quality, efficiency, accuracy, documentation, and maintainability after TODO implementation.", critic_depth=args.critic_depth, max_roles=args.max_roles, context_max_chars=args.context_max_chars)
+        result = run_improvement_phase(root, args.todo_id, args.prompt or "Review implementation quality, efficiency, accuracy, documentation, and maintainability after TODO implementation.", critic_depth=args.critic_depth, max_roles=args.max_roles, context_max_chars=args.context_max_chars, agent_budget=args.agent_budget)
     else:  # pragma: no cover
         raise SystemExit(f"Unknown phase: {args.phase}")
     print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))

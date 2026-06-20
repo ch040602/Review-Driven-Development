@@ -167,6 +167,7 @@ python skills/review-driven-development/scripts/context_inventory.py --root . --
 python skills/review-driven-development/scripts/context_inventory.py --root . --sync --overview
 python skills/review-driven-development/scripts/context_inventory.py --root . --sync --semantic-summary
 python skills/review-driven-development/scripts/context_inventory.py --root . --sync --semantic-search "quality gate completion"
+python skills/review-driven-development/scripts/context_inventory.py --root . --sync --role-map
 python skills/review-driven-development/scripts/context_inventory.py --root . --sync --bootstrap
 python skills/review-driven-development/scripts/workflow_runner.py --root . --phase commands
 ```
@@ -291,7 +292,9 @@ The context layer follows the ECC-style idea of loading compact, relevant contex
 .codex/review-driven-development/context-semantic-index.json
 ```
 
-Codex should read `context-pack.md` first, run `--semantic-search "<query>"` to rank likely files, then open only the source/docs referenced by the active TODO. `context-semantic-index.json` stores the bounded file/symbol/term corpus and optional embedding vectors. Default ranking uses `scikit-learn` TF-IDF when installed, then lexical overlap; add `--embeddings` only when dense `sentence-transformers` ranking is worth the model-load cost. `--sync --bootstrap` inserts a marker-managed `AGENTS.md` block so future Codex sessions see this policy automatically.
+Codex should read `context-pack.md` first, check its `Role map` section, run one listed query hint with `--semantic-search "<query>"` when needed, then open only the source/docs referenced by the active TODO. `context-semantic-index.json` stores the bounded file/symbol/term corpus and optional embedding vectors. Default ranking uses `scikit-learn` TF-IDF when installed, then lexical overlap; add `--embeddings` only when dense `sentence-transformers` ranking is worth the model-load cost. `--sync --role-map` prints the same responsibility map as JSON for scripts, and `--sync --bootstrap` inserts a marker-managed `AGENTS.md` block so future Codex sessions see this policy automatically.
+
+Subagent briefs use `--agent-budget spark-first` by default. That budget routes frequent structured critics to `codex-spark`, keeps cross-file reasoning on `codex-standard`, and reserves `codex-deep` for security, data, architecture, broad migrations, or explicit `--critic-depth deep`. If a spark pass finds blocker/high uncertainty, rerun that single role at the next tier instead of escalating every subagent.
 
 Default `self_test.py` avoids embedding model loading for CI stability. Run the heavier embedding smoke check explicitly:
 
