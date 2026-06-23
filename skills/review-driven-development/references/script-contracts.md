@@ -76,6 +76,61 @@ Purpose: Inspect source/docs/tests/build/data context before planning, write reu
 | `sync_context` | Reuse valid context cache or rebuild inventory and compact context pack. |
 | `main` | CLI entrypoint; keep side effects explicit and bounded to the requested root/path. |
 
+## `minimal_solution_ladder.py`
+
+Purpose: Build a pre-TODO minimality packet so RDD prefers skip/reuse/stdlib/native/installed dependency/one-line/minimal-code in that order.
+
+| Function/class | Intended implementation boundary |
+|---|---|
+| `rank_reuse_candidates` | Rank existing files by bounded lexical overlap with the requirement. |
+| `installed_dependency_names` | Return lightweight dependency names from Python manifests. |
+| `choose_rung` | Select one ladder rung without making a final main-agent decision. |
+| `build_minimality_packet` | Return machine-readable minimality evidence. |
+| `save_minimality_packet` | Persist the packet under `.codex/review-driven-development/`. |
+| `main` | CLI entrypoint; keep writes bounded to the requested packet path/state directory. |
+
+## `diff_budget.py`
+
+Purpose: Detect over-large diffs and missing tests for logic changes.
+
+| Function/class | Intended implementation boundary |
+|---|---|
+| `analyze_diff_text` | Parse unified diff text and return metrics, warnings, blockers. |
+| `git_diff` | Read current git diff for a root/ref. |
+| `main` | CLI entrypoint; report only, do not edit files. |
+
+## `dependency_guard.py`
+
+Purpose: Compare dependency manifests before/after and block unjustified additions.
+
+| Function/class | Intended implementation boundary |
+|---|---|
+| `dependency_names_from_text` | Parse supported manifest formats conservatively. |
+| `build_dependency_report` | Return new dependencies and blockers from minimality/decision evidence. |
+| `main` | CLI entrypoint; report only, do not edit manifests. |
+
+## `model_router.py`
+
+Purpose: Map critic roles to custom-agent configs and manual spawn plans.
+
+| Function/class | Intended implementation boundary |
+|---|---|
+| `route_role` | Return role, custom agent, model, sandbox, and escalation metadata. |
+| `build_spawn_plan` | Build manual spawn instructions from generated brief paths. |
+| `main` | CLI entrypoint; never claim subagents executed. |
+
+## `rdd_commands.py`
+
+Purpose: Provide `rdd-simplify`, `rdd-audit`, `rdd-debt`, `rdd-gain`, and `rdd-spark-review` helper surfaces.
+
+| Function/class | Intended implementation boundary |
+|---|---|
+| `run_simplify` | Save a current-diff delete-list report. |
+| `run_audit` | Save a lightweight repo audit from context inventory. |
+| `append_debt` | Append one simplification candidate to `rdd-debt.jsonl`. |
+| `run_gain` | Save current diff-budget evidence as a gain proxy. |
+| `main` | CLI entrypoint; report or append only, never patch code. |
+
 ## `critic_ledger.py`
 
 Purpose: Store critic findings and main-agent accept/reject/defer decisions as an append-only ledger.
@@ -259,6 +314,7 @@ Purpose: Generate critical-only subagent briefs and decision tables for main-age
 | `role_list_for_phase` | Return critic roles for a phase using inventory hints. |
 | `build_brief` | Build a Markdown prompt for one critical-only subagent. |
 | `write_briefs` | Write critical-only briefs for one phase. |
+| `write_spawn_plan` | Write a manual custom-agent spawn plan for generated briefs. |
 | `parse_findings_placeholder` | Placeholder parser for subagent findings. |
 | `build_decision_table` | Create a decision table template for the main agent. |
 | `main` | CLI entrypoint; keep side effects explicit and bounded to the requested root/path. |

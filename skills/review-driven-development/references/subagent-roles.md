@@ -28,6 +28,7 @@ The main agent decides whether to accept, reject, defer, or ask the user.
 | `security-risk-critic` | Input, auth, secrets, dependency, data, and destructive-change risks. |
 | `documentation-critic` | Missing docs/ADR/changelog/API examples. |
 | `data-csv-critic` | Schema, nulls, duplicates, leakage, metric errors, CSV/log problems. |
+| `simplification-critic` | Whether the TODO can be skipped, reused, reduced, or deleted before adding code. |
 
 ## Validation roles
 
@@ -38,6 +39,7 @@ The main agent decides whether to accept, reject, defer, or ask the user.
 | `security-risk-critic` | Whether implementation introduced security risks. |
 | `documentation-critic` | Whether documentation matches the change. |
 | `maintainability-critic` | Whether code is reviewable and maintainable. |
+| `simplification-critic` | Whether new files, classes, wrappers, dependencies, or config are unnecessary. |
 
 ## Improvement roles
 
@@ -49,6 +51,17 @@ The main agent decides whether to accept, reject, defer, or ask the user.
 | `data-csv-critic` | Dataset/CSV/log issues and metric reliability. |
 | `documentation-critic` | Missing or inaccurate docs. |
 | `maintainability-critic` | Complexity, duplication, naming, boundaries. |
+| `simplification-critic` | Delete-list candidates and future-proofing outside TODO scope. |
+
+## Simplification checks
+
+- Can existing code handle the same function?
+- Is the new file necessary?
+- Is a class/interface/factory earning its cost?
+- Is config actually expected to vary?
+- Can the change avoid a dependency?
+- Is there a removable wrapper?
+- Does the diff include future-proofing outside the TODO?
 
 ## Finding format
 

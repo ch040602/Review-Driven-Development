@@ -18,6 +18,8 @@ All state lives under:
 | `review-ledger.md` | Markdown | Critic/review/validation summaries |
 | `implementation-log.md` | Markdown | Completed TODO evidence and documentation status |
 | `commands.json` | JSON | test/lint/build/eval command groups |
+| `minimality_packet.json` | JSON | Current minimal solution ladder decision |
+| `rdd-debt.jsonl` | JSONL | Append-only deferred simplification candidates |
 | `context-inventory.json` | JSON | Last project context inventory |
 | `context-cache.json` | JSON | Fingerprint metadata for safe inventory/context-pack reuse |
 | `context-pack.md` | Markdown | Compact Codex-first project context summary |
@@ -97,6 +99,7 @@ Consumers should prefer `event`, `created_at`, `evidence`, `review_refs`, and `d
   },
   "existing_code_policy": "review_then_reuse",
   "implementation_method": "tdd_first_incremental",
+  "minimalism_level": "full",
   "source_grounding": true,
   "markdown_context": true,
   "parallel_subagent_policy": "maximize_where_safe",

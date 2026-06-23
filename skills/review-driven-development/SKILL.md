@@ -13,7 +13,7 @@ Run one integrated workflow:
 requirements -> first-run defaults -> compact source/file analysis -> rule-gated critical subagents -> main-agent decisions -> TODO plan -> one TODO execution -> TDD validation -> independent critical review -> documentation -> gated improvement critique -> TODO update -> repeat
 ```
 
-Optimize for completeness, correctness, maintainability, traceability, research usefulness, and fast context reuse. Prefer compact evidence packets and rule-based narrowing before spending LLM/subagent tokens.
+Optimize for completeness, correctness, maintainability, traceability, research usefulness, and fast context reuse. Prefer compact evidence packets and rule-based narrowing before spending LLM/subagent tokens. Before TODO generation, prefer the minimal solution ladder: prove the feature is necessary, reuse existing code, prefer stdlib/native/installed dependencies, try a one-line/local change, then implement minimal code only if still justified.
 
 ## Token-Budget Defaults
 
@@ -32,6 +32,7 @@ Additional operating goals:
 - Prefer targeted file ranking over broad source-tree reads.
 - Read the `Role map` in `context-pack.md` before any broad exploration; use its query hints to choose one responsibility boundary.
 - Preserve an explicit `deep` path for high-risk work instead of silently weakening review quality.
+- Keep `minimalism_level` separate from `fast`/`standard`/`deep`; default to `full` and put long policy in `references/minimal-solution-policy.md`.
 
 ## Non-negotiable rules
 
@@ -50,6 +51,7 @@ Additional operating goals:
 13. Use `systematic-debugging` for failed checks before broad changes.
 14. Do not mark a TODO completed until evidence, validation notes, review notes, and documentation status are recorded.
 15. After each TODO, run improvement critique only at the depth justified by risk: `minimal` for straightforward validated changes, `standard` by default, `deep` for data/security/architecture/performance-sensitive work.
+16. Run the minimal-solution ladder before creating TODOs that add files, dependencies, config, abstractions, scanners, parsers, or workflows; record the packet when the gate changes the plan.
 
 ## Rule-Based Subagent Triggers
 
@@ -71,6 +73,7 @@ Generated briefs include an agent allocation hint. Treat tier names as routing l
 - Escalate to `codex-deep` for security, data correctness, architecture blockers, broad migrations, or when `critic-depth=deep` is explicitly selected.
 - If a `codex-spark` pass reports blocker/high severity, missing evidence, or cross-module uncertainty, rerun only that role at the next tier instead of broadening every subagent.
 - Preserve the main-agent decision boundary: subagents identify risks; the main agent accepts, rejects, defers, or asks the user.
+- Custom agent configs under `.codex/agents/` and spawn plans are scaffolds for explicit subagent use; do not claim Spark or any subagent executed unless it actually ran.
 
 ## Required state files
 
@@ -95,6 +98,8 @@ context-inventory.json  # source/docs/data inventory snapshot
 context-cache.json      # fingerprint metadata for safe cache reuse
 context-pack.md         # compact Codex-first context summary
 context-semantic-index.json # bounded symbol/term locator index
+minimality_packet.json  # current minimal-solution ladder evidence
+rdd-debt.jsonl          # append-only simplification debt ledger
 ```
 
 ## Required references
@@ -104,6 +109,9 @@ Read these as needed:
 ```text
 references/workflow.md
 references/subagent-roles.md
+references/model-routing.md
+references/minimal-solution-policy.md
+references/hook-policy.md
 references/internal-skill-map.md
 references/external-skill-links.md       # canonical external skill URL list
 references/external-skills.md            # compatibility alias and external skill policy
@@ -124,6 +132,11 @@ The scripts are implemented helper contracts for inventory, requirement analysis
 ```text
 scripts/requirement_analyzer.py       # requirement packet and first response options
 scripts/context_inventory.py          # source/docs/tests/data inventory, cache, context pack, semantic index, bootstrap
+scripts/minimal_solution_ladder.py    # pre-TODO minimal solution ladder packet
+scripts/diff_budget.py                # touched-file/LOC/abstraction/dependency budget
+scripts/dependency_guard.py           # dependency addition diff guard
+scripts/model_router.py               # custom-agent route and spawn-plan metadata
+scripts/rdd_commands.py               # rdd-simplify/audit/debt/gain/spark-review helpers
 scripts/external_skill_registry.py    # explicit external skill URLs and phase mapping
 scripts/subagent_brief_builder.py     # critical-only subagent briefs
 scripts/critic_ledger.py              # finding/decision ledger

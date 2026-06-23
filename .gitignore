@@ -3,6 +3,12 @@ __pycache__/
 *.egg-info/
 .DS_Store
 .codex-log/
-.codex/
+.codex/*
+!.codex/
+!.codex/agents/
+!.codex/agents/*.toml
+!.codex/hooks/
+!.codex/hooks/*.py
+!.codex/hooks.json
 
 .pytest_cache/

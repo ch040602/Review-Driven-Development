@@ -107,6 +107,7 @@ def default_defaults() -> Dict[str, Any]:
         "priority": {"completeness_over_speed": True, "safety_over_scope": True, "minimize_destructive_changes": True},
         "existing_code_policy": "review_then_reuse",
         "implementation_method": "tdd_first_incremental",
+        "minimalism_level": "full",
         "source_grounding": True,
         "markdown_context": True,
         "parallel_subagent_policy": "maximize_where_safe",

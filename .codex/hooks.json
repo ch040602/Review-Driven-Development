@@ -1,0 +1,62 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .codex/hooks/rdd_session_start.py",
+            "statusMessage": "Loading RDD context guidance"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|shell_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .codex/hooks/rdd_pre_tool_use.py",
+            "statusMessage": "Checking RDD dependency/destructive guards"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|shell_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .codex/hooks/rdd_post_tool_use.py",
+            "statusMessage": "Checking RDD post-tool reminders"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .codex/hooks/rdd_subagent_start.py",
+            "statusMessage": "Injecting RDD subagent rules"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .codex/hooks/rdd_stop_check.py",
+            "statusMessage": "Checking RDD completion gates"
+          }
+        ]
+      }
+    ]
+  }
+}

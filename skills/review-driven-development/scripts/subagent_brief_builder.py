@@ -24,6 +24,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
+try:
+    from .model_router import build_spawn_plan, route_role
+except ImportError:  # pragma: no cover
+    from model_router import build_spawn_plan, route_role  # type: ignore
+
 STATE_DIR = Path(".codex") / "review-driven-development"
 
 
@@ -62,12 +67,13 @@ ROLE_SPECS: Dict[str, RoleSpec] = {
     "quality-critic": RoleSpec("quality-critic", "improvement", "Unresolved quality gaps after TODO completion.", "Diff, review findings, validation report."),
     "performance-efficiency-critic": RoleSpec("performance-efficiency-critic", "improvement", "Performance, cost, memory, latency, algorithmic inefficiency.", "Benchmarks, code paths, data sizes, runtime constraints."),
     "accuracy-evaluation-critic": RoleSpec("accuracy-evaluation-critic", "improvement", "Correctness, eval coverage, numerical or LLM response quality.", "Test/eval results, examples, expected outputs."),
+    "simplification-critic": RoleSpec("simplification-critic", "validation", "Unnecessary code, dependencies, wrappers, config, abstractions, and future-proofing outside the current TODO.", "Diff, touched files, dependency changes, minimality packet, validation evidence."),
 }
 
 ROLE_SETS: Dict[str, List[str]] = {
     "preplan": ["requirements-critic", "language-runtime-critic", "architecture-critic", "existing-code-reuse-refactor-critic", "source-grounding-critic", "markdown-doc-context-critic", "test-tdd-critic", "security-risk-critic", "documentation-critic", "data-csv-critic"],
-    "validation": ["validation-runner-critic", "test-tdd-critic", "security-risk-critic", "documentation-critic", "maintainability-critic"],
-    "improvement": ["quality-critic", "performance-efficiency-critic", "accuracy-evaluation-critic", "data-csv-critic", "documentation-critic", "maintainability-critic"],
+    "validation": ["validation-runner-critic", "test-tdd-critic", "security-risk-critic", "documentation-critic", "maintainability-critic", "simplification-critic"],
+    "improvement": ["quality-critic", "performance-efficiency-critic", "accuracy-evaluation-critic", "data-csv-critic", "documentation-critic", "maintainability-critic", "simplification-critic"],
 }
 CRITIC_DEPTH_LIMITS = {
     "minimal": 2,
@@ -88,6 +94,7 @@ SPARK_FRIENDLY_ROLES = {
     "maintainability-critic",
     "quality-critic",
     "greenfield-scope-critic",
+    "simplification-critic",
 }
 STANDARD_ROLES = {
     "language-runtime-critic",
@@ -162,7 +169,7 @@ def role_list_for_phase(
         roles = ["requirements-critic", "test-tdd-critic"]
         roles.append("existing-code-reuse-refactor-critic" if not inventory or inventory.get("has_existing_code", True) else "greenfield-scope-critic")
     elif phase == "validation":
-        roles = ["validation-runner-critic", "test-tdd-critic", "maintainability-critic"]
+        roles = ["validation-runner-critic", "test-tdd-critic", "maintainability-critic", "simplification-critic"]
     else:
         roles = ["quality-critic", "performance-efficiency-critic", "accuracy-evaluation-critic"]
 
@@ -295,11 +302,21 @@ def allocation_table_for_roles(
             critic_depth=critic_depth,
             agent_budget=agent_budget,
         )
+        route = route_role(
+            role,
+            phase=phase,
+            critic_depth=critic_depth,
+            agent_budget=agent_budget,
+        )
         rows.append({
             "role": role,
             "agent_tier": allocation.tier,
+            "custom_agent_name": route["custom_agent_name"],
+            "model": route["model"],
+            "sandbox": route["sandbox"],
             "reason": allocation.reason,
             "escalate_when": allocation.escalate_when,
+            "escalate_to": str(route.get("escalate_to", "")),
         })
     return rows
 
@@ -367,6 +384,7 @@ def build_brief(
 ## Agent allocation hint
 
 - Recommended tier: `{allocation.tier}`
+- Custom agent: `{route_role(role, phase=phase, critic_depth=critic_depth, agent_budget=agent_budget)["custom_agent_name"]}`
 - Reason: {allocation.reason}
 - Escalate when: {allocation.escalate_when}
 
@@ -431,6 +449,17 @@ def write_briefs(
     return paths
 
 
+def write_spawn_plan(root: Path, phase: str, brief_paths: Iterable[Path], *, critic_depth: str = "standard", agent_budget: str = "spark-first") -> Path:
+    """Write a manual custom-agent spawn plan for generated briefs."""
+
+    plan = build_spawn_plan(brief_paths, phase=phase, critic_depth=critic_depth, agent_budget=agent_budget)
+    directory = root / STATE_DIR / "subagent-briefs"
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{phase}-spawn-plan-{now_stamp()}.json"
+    path.write_text(json.dumps(plan, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path
+
+
 def parse_findings_placeholder(text: str) -> List[Dict[str, Any]]:
     """Placeholder parser for subagent findings.
 
@@ -475,6 +504,9 @@ def main() -> None:
     parser.add_argument("--max-roles", type=int)
     parser.add_argument("--context-max-chars", type=int, default=1200)
     parser.add_argument("--agent-budget", choices=sorted(AGENT_BUDGETS), default="spark-first")
+    parser.add_argument("--emit-agent-instructions", action="store_true", help="Emit allocation metadata for generated briefs")
+    parser.add_argument("--emit-spawn-plan", action="store_true", help="Write and emit a manual custom-agent spawn plan")
+    parser.add_argument("--emit-agent-files", action="store_true", help="Emit expected .codex/agents config file paths")
     args = parser.parse_args()
     paths = write_briefs(
         Path(args.root).resolve(),
@@ -487,8 +519,35 @@ def main() -> None:
         context_max_chars=args.context_max_chars,
         agent_budget=args.agent_budget,
     )
-    for path in paths:
-        print(path)
+    if args.emit_agent_instructions or args.emit_spawn_plan or args.emit_agent_files:
+        roles = [path.stem for path in paths]
+        payload: Dict[str, Any] = {"brief_paths": [str(path) for path in paths]}
+        if args.emit_agent_instructions:
+            payload["agent_allocations"] = allocation_table_for_roles(
+                roles,
+                args.phase,
+                load_inventory(Path(args.root).resolve()),
+                critic_depth=args.critic_depth,
+                agent_budget=args.agent_budget,
+            )
+        if args.emit_spawn_plan:
+            payload["spawn_plan_path"] = str(write_spawn_plan(
+                Path(args.root).resolve(),
+                args.phase,
+                paths,
+                critic_depth=args.critic_depth,
+                agent_budget=args.agent_budget,
+            ))
+        if args.emit_agent_files:
+            payload["agent_files"] = [
+                ".codex/agents/rdd-spark-critic.toml",
+                ".codex/agents/rdd-standard-critic.toml",
+                ".codex/agents/rdd-deep-critic.toml",
+            ]
+        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        for path in paths:
+            print(path)
 
 
 if __name__ == "__main__":

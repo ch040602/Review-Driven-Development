@@ -385,6 +385,49 @@ def unique_ordered(paths: Iterable[str]) -> List[str]:
     return unique
 
 
+def rank_reuse_candidates(root: Path, source_files: Iterable[str], *, top_k: int = 12) -> List[Dict[str, Any]]:
+    """Rank likely existing-code reuse targets from paths, symbols, and terms."""
+
+    candidates: List[Dict[str, Any]] = []
+    reuse_terms = {
+        "adapter",
+        "builder",
+        "cache",
+        "context",
+        "gate",
+        "guard",
+        "inventory",
+        "ledger",
+        "manager",
+        "parser",
+        "registry",
+        "report",
+        "router",
+        "runner",
+        "sync",
+        "validator",
+        "workflow",
+    }
+    priority_names = {"context_inventory.py", "workflow_runner.py", "subagent_brief_builder.py", "quality_gate.py"}
+    for rel in source_files:
+        text = read_text_snippet(root / rel, max_chars=5000)
+        symbols = extract_symbols(text, rel)
+        terms = set(tokenize_for_index(f"{split_identifier_terms(rel)}\n{text}", max_terms=80))
+        matched_terms = sorted(terms & reuse_terms)
+        score = len(matched_terms) * 3 + min(len(symbols), 8)
+        if Path(rel).name in priority_names:
+            score += 4
+        if score <= 0:
+            continue
+        candidates.append({
+            "path": rel,
+            "score": score,
+            "matched_terms": matched_terms[:8],
+            "symbols": [symbol["name"] for symbol in symbols[:6]],
+        })
+    return sorted(candidates, key=lambda item: (-int(item["score"]), str(item["path"])))[:top_k]
+
+
 def inventory_limits(mode: str, max_files: int | None = None) -> Dict[str, int]:
     """Return scan/list/snippet limits for an inventory mode."""
 
@@ -731,6 +774,7 @@ def build_inventory(
         "tests": tests[: limits["tests"]],
         "build_files": build_files[: limits["build_files"]],
         "source_files_sample": source_files[: limits["source_files_sample"]],
+        "reuse_candidates": rank_reuse_candidates(root, source_files, top_k=12),
         "total_docs": len(docs),
         "total_data_files": len(data_files),
         "total_tests": len(tests),
@@ -792,6 +836,9 @@ def build_context_pack(data: Mapping[str, Any], *, max_chars: int = 12000) -> st
             f"- Top semantic terms: `{', '.join(list(semantic.get('top_terms', []))[:12])}`",
         ])
     sections.extend([
+        "",
+        "## Reuse candidates",
+        *_markdown_list((str(item.get("path", "")) for item in data.get("reuse_candidates", [])), 12),
         "",
         "## Role map",
         "Use this map before opening source trees; jump to the matching role path or run one query hint with `--semantic-search`.",

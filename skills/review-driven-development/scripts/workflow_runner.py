@@ -19,7 +19,7 @@ try:
     from .quality_gate import build_report, load_commands, save_report, select_commands
     from .rdd_state import ensure_state, load_defaults
     from .requirement_analyzer import create_requirement_packet, packet_to_dict
-    from .subagent_brief_builder import allocation_table_for_roles, write_briefs
+    from .subagent_brief_builder import allocation_table_for_roles, write_briefs, write_spawn_plan
     from .todo_manager import create_todo, start_next_todo
 except ImportError:  # pragma: no cover
     from context_inventory import load_context_pack, load_semantic_index, search_semantic_index, summarize_inventory, summarize_semantic_index, sync_context, write_bootstrap  # type: ignore
@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover
     from quality_gate import build_report, load_commands, save_report, select_commands  # type: ignore
     from rdd_state import ensure_state, load_defaults  # type: ignore
     from requirement_analyzer import create_requirement_packet, packet_to_dict  # type: ignore
-    from subagent_brief_builder import allocation_table_for_roles, write_briefs  # type: ignore
+    from subagent_brief_builder import allocation_table_for_roles, write_briefs, write_spawn_plan  # type: ignore
     from todo_manager import create_todo, start_next_todo  # type: ignore
 
 
@@ -241,7 +241,15 @@ def run_commands_phase(root: Path, todo_id: Optional[str] = None) -> Dict[str, o
             "python skills/review-driven-development/scripts/workflow_runner.py --root . --phase sync",
             "python skills/review-driven-development/scripts/workflow_runner.py --root . --phase once --prompt \"<requirement>\"",
             "python skills/review-driven-development/scripts/workflow_runner.py --root . --phase validation --todo-id <id> --agent-budget spark-first",
+            "python skills/review-driven-development/scripts/workflow_runner.py --root . --phase spark-review --todo-id <id>",
             "python skills/review-driven-development/scripts/workflow_runner.py --root . --phase commands",
+        ],
+        "minimalism": [
+            "@rdd-simplify -> python skills/review-driven-development/scripts/rdd_commands.py simplify --root .",
+            "@rdd-audit -> python skills/review-driven-development/scripts/rdd_commands.py audit --root .",
+            "@rdd-debt -> python skills/review-driven-development/scripts/rdd_commands.py debt --root . --title \"<candidate>\" --reason \"<why later>\"",
+            "@rdd-gain -> python skills/review-driven-development/scripts/rdd_commands.py gain --root .",
+            "@rdd-spark-review -> python skills/review-driven-development/scripts/rdd_commands.py spark-review --root . --todo-id <id>",
         ],
         "quality": {
             "configured": commands,
@@ -373,6 +381,37 @@ def run_validation_phase(
     }
 
 
+def run_spark_review_phase(
+    root: Path,
+    todo_id: str,
+    context_summary: str,
+    *,
+    context_max_chars: int = 1200,
+) -> Dict[str, object]:
+    """Prepare a Spark-first simplification review brief and manual spawn plan."""
+
+    brief_paths = write_briefs(
+        root,
+        "validation",
+        todo_id,
+        context_summary,
+        roles=["simplification-critic"],
+        critic_depth="minimal",
+        max_roles=1,
+        context_max_chars=context_max_chars,
+        agent_budget="spark-first",
+    )
+    spawn_plan_path = write_spawn_plan(root, "validation", brief_paths, critic_depth="minimal", agent_budget="spark-first")
+    spawn_plan = json.loads(spawn_plan_path.read_text(encoding="utf-8"))
+    return {
+        "phase": "spark-review",
+        "brief_paths": [str(path) for path in brief_paths],
+        "spawn_plan_path": str(spawn_plan_path),
+        "spawn_plan": spawn_plan,
+        "main_agent_next": "Spawn rdd_spark_critic manually only if this fast simplification review is worth the token cost.",
+    }
+
+
 def run_documentation_phase(root: Path, todo_id: str, changed_files: Optional[List[str]] = None) -> Dict[str, object]:
     """Prepare documentation check report."""
 
@@ -480,7 +519,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Preview review-driven-development orchestration.")
     parser.add_argument("--root", default=".")
     parser.add_argument("--prompt", default="")
-    parser.add_argument("--phase", choices=["once", "context", "sync", "overview", "semantic-index", "semantic-search", "role-map", "bootstrap", "commands", "first-run", "preplan", "todo-generation", "execution", "validation", "documentation", "improvement"], default="once")
+    parser.add_argument("--phase", choices=["once", "context", "sync", "overview", "semantic-index", "semantic-search", "role-map", "bootstrap", "commands", "first-run", "preplan", "todo-generation", "execution", "validation", "spark-review", "documentation", "improvement"], default="once")
     parser.add_argument("--todo-id")
     parser.add_argument("--query", default="")
     parser.add_argument("--top-k", type=int, default=8)
@@ -545,6 +584,10 @@ def main() -> None:
         if not args.todo_id:
             raise SystemExit("--todo-id is required for validation phase")
         result = run_validation_phase(root, args.todo_id, critic_depth=args.critic_depth, max_roles=args.max_roles, context_max_chars=args.context_max_chars, agent_budget=args.agent_budget)
+    elif args.phase == "spark-review":
+        if not args.todo_id:
+            raise SystemExit("--todo-id is required for spark-review phase")
+        result = run_spark_review_phase(root, args.todo_id, args.prompt or "Fast simplification review for current diff.", context_max_chars=args.context_max_chars)
     elif args.phase == "documentation":
         if not args.todo_id:
             raise SystemExit("--todo-id is required for documentation phase")

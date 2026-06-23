@@ -16,7 +16,8 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 import context_inventory as ci  # noqa: E402
 from quality_gate import run_quality_gate  # noqa: E402
 from context_inventory import BOOTSTRAP_BEGIN, build_context_pack, build_inventory, load_context_pack, load_semantic_index, search_semantic_index, sklearn_available, sync_context  # noqa: E402
-from subagent_brief_builder import agent_allocation_for_role, role_list_for_phase, write_briefs  # noqa: E402
+from rdd_state import default_defaults  # noqa: E402
+from subagent_brief_builder import agent_allocation_for_role, allocation_table_for_roles, role_list_for_phase, write_briefs  # noqa: E402
 from todo_manager import (  # noqa: E402
     add_review_record,
     add_validation_evidence,
@@ -25,7 +26,7 @@ from todo_manager import (  # noqa: E402
     get_todo,
     update_documentation_status,
 )
-from workflow_runner import run_bootstrap_phase, run_commands_phase, run_overview_phase, run_role_map_phase, run_semantic_index_phase, run_semantic_search_phase, run_sync_phase, run_validation_phase  # noqa: E402
+from workflow_runner import run_bootstrap_phase, run_commands_phase, run_overview_phase, run_role_map_phase, run_semantic_index_phase, run_semantic_search_phase, run_spark_review_phase, run_sync_phase, run_validation_phase  # noqa: E402
 
 
 def run_cmd(*args: str) -> subprocess.CompletedProcess[str]:
@@ -134,6 +135,26 @@ def test_role_map_guides_future_exploration_without_source_scan() -> None:
     assert "context_inventory.py" in pack
 
 
+def test_context_inventory_ranks_reuse_candidates() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        scripts = root / "skills" / "review-driven-development" / "scripts"
+        scripts.mkdir(parents=True)
+        (scripts / "context_inventory.py").write_text("def build_context_pack(data):\n    return 'pack'\n", encoding="utf-8")
+        (scripts / "unrelated.py").write_text("def send_email():\n    pass\n", encoding="utf-8")
+
+        inventory = build_inventory(root, mode="standard")
+
+    assert inventory["reuse_candidates"][0]["path"].endswith("context_inventory.py")
+    assert "context" in inventory["reuse_candidates"][0]["matched_terms"]
+
+
+def test_default_state_includes_minimalism_level() -> None:
+    defaults = default_defaults()
+
+    assert defaults["minimalism_level"] == "full"
+
+
 def test_rule_gated_subagent_selection_avoids_exhaustive_defaults() -> None:
     inventory = {
         "has_existing_code": True,
@@ -180,6 +201,26 @@ def test_agent_tier_allocation_prefers_spark_and_escalates_risk() -> None:
     assert requirements.tier == "codex-spark"
     assert framework.tier == "codex-standard"
     assert security.tier == "codex-deep"
+
+
+def test_simplification_critic_is_selected_and_routes_to_spark_agent() -> None:
+    inventory = {
+        "has_existing_code": True,
+        "has_tests": True,
+        "requires_data_critic": False,
+        "needs_security_critic": False,
+        "frameworks": [],
+        "docs": ["README.md"],
+        "source_files_sample": ["src/app.py"],
+    }
+
+    validation_roles = role_list_for_phase("validation", inventory, critic_depth="deep")
+    rows = allocation_table_for_roles(["simplification-critic"], "validation", inventory)
+
+    assert "simplification-critic" in validation_roles
+    assert rows[0]["agent_tier"] == "codex-spark"
+    assert rows[0]["custom_agent_name"] == "rdd_spark_critic"
+    assert rows[0]["model"] == "gpt-5.3-codex-spark"
 
 
 def test_write_briefs_can_cap_roles_and_context_size() -> None:
@@ -261,6 +302,8 @@ def test_workflow_runner_exposes_sync_overview_and_commands() -> None:
         assert any("--phase role-map" in item for item in commands["context"])
         assert any("--role-map" in item for item in commands["context"])
         assert any("--phase bootstrap" in item for item in commands["context"])
+        assert any("@rdd-simplify" in item for item in commands["minimalism"])
+        assert any("@rdd-spark-review" in item for item in commands["minimalism"])
         assert "RDD-T-00000001" in commands["quality"]["execute_current_todo"]
 
 
@@ -272,6 +315,17 @@ def test_workflow_runner_reports_agent_allocations_for_validation() -> None:
     assert result["agent_budget"] == "spark-first"
     assert result["agent_allocations"]
     assert result["agent_allocations"][0]["agent_tier"] == "codex-spark"
+
+
+def test_workflow_runner_spark_review_writes_spawn_plan() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        result = run_spark_review_phase(root, "RDD-T-00000001", "Check current diff")
+
+        assert result["phase"] == "spark-review"
+        assert result["spawn_plan"]
+        assert result["spawn_plan"][0]["custom_agent_name"] == "rdd_spark_critic"
+        assert Path(result["spawn_plan_path"]).exists()
 
 
 def test_dry_run_quality_gate_does_not_complete_when_commands_exist() -> None:

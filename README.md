@@ -292,9 +292,19 @@ The context layer follows the ECC-style idea of loading compact, relevant contex
 .codex/review-driven-development/context-semantic-index.json
 ```
 
-Codex should read `context-pack.md` first, check its `Role map` section, run one listed query hint with `--semantic-search "<query>"` when needed, then open only the source/docs referenced by the active TODO. `context-semantic-index.json` stores the bounded file/symbol/term corpus and optional embedding vectors. Default ranking uses `scikit-learn` TF-IDF when installed, then lexical overlap; add `--embeddings` only when dense `sentence-transformers` ranking is worth the model-load cost. `--sync --role-map` prints the same responsibility map as JSON for scripts, and `--sync --bootstrap` inserts a marker-managed `AGENTS.md` block so future Codex sessions see this policy automatically.
+Codex should read `context-pack.md` first, check its `Role map` and `Reuse candidates` sections, run one listed query hint with `--semantic-search "<query>"` when needed, then open only the source/docs referenced by the active TODO. `context-semantic-index.json` stores the bounded file/symbol/term corpus and optional embedding vectors. Default ranking uses `scikit-learn` TF-IDF when installed, then lexical overlap; add `--embeddings` only when dense `sentence-transformers` ranking is worth the model-load cost. `--sync --role-map` prints the same responsibility map as JSON for scripts, and `--sync --bootstrap` inserts a marker-managed `AGENTS.md` block so future Codex sessions see this policy automatically.
 
-Subagent briefs use `--agent-budget spark-first` by default. That budget routes frequent structured critics to `codex-spark`, keeps cross-file reasoning on `codex-standard`, and reserves `codex-deep` for security, data, architecture, broad migrations, or explicit `--critic-depth deep`. If a spark pass finds blocker/high uncertainty, rerun that single role at the next tier instead of escalating every subagent.
+Subagent briefs use `--agent-budget spark-first` by default. That budget routes frequent structured critics to `codex-spark`, keeps cross-file reasoning on `codex-standard`, and reserves `codex-deep` for security, data, architecture, broad migrations, or explicit `--critic-depth deep`. `--emit-spawn-plan` writes a manual custom-agent plan using `.codex/agents/rdd-*-critic.toml`; it does not claim a subagent ran. If a spark pass finds blocker/high uncertainty, rerun that single role at the next tier instead of escalating every subagent.
+
+Minimality helpers:
+
+```bash
+python skills/review-driven-development/scripts/minimal_solution_ladder.py --root . --requirement "<requirement>"
+python skills/review-driven-development/scripts/diff_budget.py --root .
+python skills/review-driven-development/scripts/dependency_guard.py --before-root <before> --after-root .
+python skills/review-driven-development/scripts/rdd_commands.py simplify --root .
+python skills/review-driven-development/scripts/rdd_commands.py spark-review --root . --todo-id RDD-T-00000001
+```
 
 Default `self_test.py` avoids embedding model loading for CI stability. Run the heavier embedding smoke check explicitly:
 
