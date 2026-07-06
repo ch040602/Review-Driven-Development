@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-import tomllib
 import json
+import subprocess
+import sys
+import tomllib
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -25,3 +27,19 @@ def test_hooks_json_uses_matcher_group_schema() -> None:
     assert "hooks" in pre_tool
     assert pre_tool["hooks"][0]["type"] == "command"
     assert "rdd_pre_tool_use.py" in pre_tool["hooks"][0]["command"]
+
+
+def test_stop_hook_emits_valid_stop_json() -> None:
+    script = REPO_ROOT / ".codex" / "hooks" / "rdd_stop_check.py"
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        input='{"hook_event_name":"Stop"}',
+        text=True,
+        capture_output=True,
+        cwd=REPO_ROOT,
+        check=True,
+    )
+
+    payload = json.loads(result.stdout)
+    assert payload == {"continue": True}
+    assert "TODO completion needs validation evidence" in result.stderr
