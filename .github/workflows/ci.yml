@@ -34,16 +34,16 @@ jobs:
           python -m pip install pytest
 
       - name: Compile helper scripts
-        run: python -m compileall -q -f skills/review-driven-development/scripts
+        run: python -m compileall -q -f scripts
 
       - name: Validate skill layout
-        run: python skills/review-driven-development/scripts/validate_skill.py --skill-dir skills/review-driven-development
+        run: python scripts/validate_skill.py --skill-dir .
 
       - name: Validate registration helper
-        run: python skills/review-driven-development/scripts/skill_registration.py --repo-root . --validate-only
+        run: python scripts/skill_registration.py --repo-root . --validate-only
 
       - name: Run self-test
-        run: python skills/review-driven-development/scripts/self_test.py
+        run: python scripts/self_test.py
 
       - name: Run pytest smoke tests
         run: pytest -q --basetemp .pytest_tmp
