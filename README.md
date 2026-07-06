@@ -8,7 +8,7 @@
 
 > A Codex custom skill for review-driven development: requirements → source/file analysis → critical subagents → TODOs → TDD validation → independent review → documentation → improvement loop.
 
-한국어 문서는 [README.ko.md](README.ko.md)를 참고하세요.
+For Korean documentation, see [README.ko.md](README.ko.md).
 
 ## Why this exists
 
@@ -241,6 +241,13 @@ Complete the TODO only after gates are satisfied:
 python skills/review-driven-development/scripts/todo_manager.py --root . complete RDD-T-00000001
 ```
 
+When completed TODO history makes `todos.jsonl` too large for fast context
+loading, archive completed events and keep compact dependency-safe stubs:
+
+```bash
+python skills/review-driven-development/scripts/todo_manager.py --root . archive-completed
+```
+
 ## How it works
 
 ```mermaid
@@ -270,6 +277,7 @@ The skill stores project-local state under:
 ├── profile.md
 ├── defaults.json
 ├── todos.jsonl
+├── todo_archive/
 ├── critic-findings.jsonl
 ├── decision-log.md
 ├── review-ledger.md
@@ -397,6 +405,6 @@ See [SECURITY.md](SECURITY.md). Do not store secrets in `.codex/review-driven-de
 No open-source license has been selected yet. Add a `LICENSE` file before publishing as an open-source project.
 
 
-## 한국어
+## Korean docs
 
-한국어 전체 문서는 [README.ko.md](README.ko.md)를 참고하세요. 이 프로젝트는 요구사항 분석, 비판 전용 subagent, TODO 단위 TDD 검증, 독립 review, 문서화를 반복하는 Codex custom skill입니다.
+For complete Korean documentation, see [README.ko.md](README.ko.md).

@@ -1,14 +1,14 @@
-# Script contracts / Python 함수 계약
+# Script contracts
 
 This document defines implementation boundaries for the helper scripts. Codex should complete implementation details inside these boundaries instead of changing the workflow contract.
 
-이 문서는 helper script의 구현 경계를 정의합니다. Codex는 workflow 계약을 바꾸지 않고 이 경계 안에서 구현을 완성해야 합니다.
+This document defines implementation boundaries for helper scripts. Codex should complete implementation details inside these boundaries without changing the workflow contract.
 
 ## Common rules
 
 - Scripts are helpers, not final decision makers.
 - All persistent writes stay under `.codex/review-driven-development/` unless the user explicitly asks otherwise.
-- Append-only ledgers are not rewritten unless a migration is recorded.
+- Append-only ledgers are not rewritten unless a migration or completed-TODO archive manifest is recorded.
 - Validation evidence must be machine-readable and human-reviewable.
 - Critical subagent outputs are findings, not decisions.
 - External/community skill links must remain explicit and inspect-before-use.
@@ -326,7 +326,9 @@ Purpose: Manage TODO creation, state transitions, review findings, validation ev
 | Function/class | Intended implementation boundary |
 |---|---|
 | `now_iso` | Return a stable UTC timestamp. |
+| `utc_stamp` | Return a compact UTC timestamp for archive filenames. |
 | `todos_path` | Return TODO ledger path, creating the parent directory. |
+| `todo_archive_dir` | Return completed TODO archive directory, creating it if needed. |
 | `read_events` | Read append-only TODO events. |
 | `deep_merge` | Merge nested dictionaries while replacing non-dict values. |
 | `current_state` | Materialize current TODO state from ledger events. |
@@ -351,6 +353,7 @@ Purpose: Manage TODO creation, state transitions, review findings, validation ev
 | `has_configured_quality_commands` | Return True when any real quality-gate command is configured. |
 | `has_executed_passing_quality_gate` | Return True when TODO evidence includes an executed passing quality gate. |
 | `complete_todo_if_ready` | Mark a TODO completed only after all gates are satisfied. |
+| `archive_completed_todos` | Move completed TODO event history to `todo_archive/` and leave compact completed stubs in `todos.jsonl`. |
 | `update_from_improvement_critique` | Create follow-up TODOs from accepted improvement critique findings. |
 | `main` | CLI entrypoint; keep side effects explicit and bounded to the requested root/path. |
 

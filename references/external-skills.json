@@ -101,13 +101,13 @@
   },
   {
     "inspect_before_use": true,
-    "install_hint": "Install or copy the reviewed .agents/skills/agentic-rag directory from https://github.com/ch040602/Agentic-RAG-Skill.",
+    "install_hint": "Use the local installed Codex skill at C:/Users/hcslab_523/.codex/skills/agentic-rag.",
     "name": "agentic-rag",
     "phase": "companion-rag",
     "provider": "ch040602",
     "purpose": "Optional companion skill for Agentic RAG, cross-corpus retrieval, context sufficiency, query rewriting, and grounded synthesis TODOs inside RDD workflows.",
     "required": false,
-    "url": "https://github.com/ch040602/Agentic-RAG-Skill"
+    "url": "C:/Users/hcslab_523/.codex/skills/agentic-rag"
   },
   {
     "inspect_before_use": true,

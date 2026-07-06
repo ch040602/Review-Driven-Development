@@ -25,6 +25,7 @@ REQUIRED_FILES = [
     "references/todo-policy.md",
     "references/documentation-policy.md",
     "references/state-schema.md",
+    "references/pro-review.md",
     "scripts/constants.py",
     "scripts/rdd_state.py",
     "scripts/context_inventory.py",
@@ -32,6 +33,7 @@ REQUIRED_FILES = [
     "scripts/diff_budget.py",
     "scripts/dependency_guard.py",
     "scripts/model_router.py",
+    "scripts/pro_review.py",
     "scripts/rdd_commands.py",
     "scripts/requirement_analyzer.py",
     "scripts/external_skill_registry.py",
@@ -122,7 +124,9 @@ def check_optional_tests(skill_dir: Path) -> List[str]:
     """Check that behavioral smoke tests are present in the project package."""
 
     root = skill_dir.parents[1] if len(skill_dir.parents) >= 2 else skill_dir
-    tests_dir = root / "tests"
+    tests_dir = skill_dir / "tests"
+    if not tests_dir.exists():
+        tests_dir = root / "tests"
     if not tests_dir.exists():
         return ["tests/ directory missing; behavioral smoke tests are recommended"]
     if not any(tests_dir.glob("test_*.py")):

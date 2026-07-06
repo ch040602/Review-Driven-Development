@@ -1,4 +1,4 @@
-# Internal skill map / 내부 skill 사용 지도
+# Internal skill map
 
 `review-driven-development` remains the single user-facing workflow. The skills below are invoked internally when present. External links are listed so Codex can locate or review the intended skill before using it.
 

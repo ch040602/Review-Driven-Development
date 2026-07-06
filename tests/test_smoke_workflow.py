@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SKILL_DIR = REPO_ROOT / "skills" / "review-driven-development"
+SKILL_DIR = REPO_ROOT if (REPO_ROOT / "SKILL.md").exists() else REPO_ROOT / "skills" / "review-driven-development"
 SCRIPTS_DIR = SKILL_DIR / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
@@ -21,6 +21,7 @@ from subagent_brief_builder import agent_allocation_for_role, allocation_table_f
 from todo_manager import (  # noqa: E402
     add_review_record,
     add_validation_evidence,
+    archive_completed_todos,
     complete_todo_if_ready,
     create_todo,
     get_todo,
@@ -34,13 +35,15 @@ def run_cmd(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 def test_skill_layout_and_scripts_compile() -> None:
-    run_cmd("-m", "compileall", "-q", "skills/review-driven-development/scripts")
-    out = run_cmd("skills/review-driven-development/scripts/validate_skill.py", "--skill-dir", str(SKILL_DIR)).stdout
+    scripts_rel = str(SCRIPTS_DIR.relative_to(REPO_ROOT))
+    validate_rel = str((SCRIPTS_DIR / "validate_skill.py").relative_to(REPO_ROOT))
+    run_cmd("-m", "compileall", "-q", scripts_rel)
+    out = run_cmd(validate_rel, "--skill-dir", str(SKILL_DIR)).stdout
     assert "ok: `True`" in out
 
 
 def test_end_to_end_self_test() -> None:
-    out = run_cmd("skills/review-driven-development/scripts/self_test.py").stdout
+    out = run_cmd(str((SCRIPTS_DIR / "self_test.py").relative_to(REPO_ROOT))).stdout
     payload = json.loads(out)
     assert payload["ok"] is True
     assert payload["validation_briefs"] >= 1
@@ -48,7 +51,7 @@ def test_end_to_end_self_test() -> None:
 
 
 def test_registration_helper_validate_only() -> None:
-    out = run_cmd("skills/review-driven-development/scripts/skill_registration.py", "--repo-root", str(REPO_ROOT), "--validate-only").stdout
+    out = run_cmd(str((SCRIPTS_DIR / "skill_registration.py").relative_to(REPO_ROOT)), "--repo-root", str(REPO_ROOT), "--validate-only").stdout
     assert "VALID:" in out
 
 
@@ -76,11 +79,16 @@ def test_context_sync_writes_reusable_cache_and_pack() -> None:
         assert Path(first["inventory_path"]).exists()
         assert Path(first["cache_path"]).exists()
         assert Path(first["context_pack_path"]).exists()
+        assert Path(first["project_structure_md_path"]).exists()
+        assert Path(first["project_structure_json_path"]).exists()
         pack = load_context_pack(root)
+        structure = Path(first["project_structure_md_path"]).read_text(encoding="utf-8")
         index = load_semantic_index(root)
         assert pack is not None
         assert index is not None
         assert "review-driven-development context pack" in pack
+        assert "Project Structure And Completeness" in structure
+        assert "Completeness" in structure
         assert "## Role map" in pack
         assert "`README.md`" in pack
         assert any(symbol["name"] == "DemoService" for symbol in index["symbols"])
@@ -376,6 +384,33 @@ def test_resolved_rejected_or_deferred_blocker_high_review_finding_allows_comple
 
         complete_todo_if_ready(root, todo_id)
         assert get_todo(root, todo_id)["status"] == "completed"
+
+
+def test_archive_completed_todos_keeps_dependency_safe_stubs() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        completed_id = prepare_completable_todo(root)
+        complete_todo_if_ready(root, completed_id)
+        followup = create_todo(
+            root,
+            "Depends on archived completion",
+            dependencies=[completed_id],
+            acceptance_criteria=["dependency remains visible"],
+        )
+
+        result = archive_completed_todos(root)
+        state_dir = root / ".codex" / "review-driven-development"
+        ledger_text = (state_dir / "todos.jsonl").read_text(encoding="utf-8")
+        archived_text = Path(result["archive_path"]).read_text(encoding="utf-8")
+        completed = get_todo(root, completed_id)
+        followup_state = get_todo(root, followup["todo_id"])
+
+        assert result["archived_todo_count"] == 1
+        assert '"event": "archive_stub"' in ledger_text
+        assert '"event": "create"' in archived_text
+        assert completed["status"] == "completed"
+        assert completed["archived"] is True
+        assert followup_state["dependencies"] == [completed_id]
 
 
 def test_external_skill_urls_are_consistent_offline() -> None:

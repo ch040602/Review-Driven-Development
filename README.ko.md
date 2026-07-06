@@ -208,6 +208,13 @@ TODO 완료:
 python skills/review-driven-development/scripts/todo_manager.py --root . complete RDD-T-00000001
 ```
 
+완료 TODO 이력이 `todos.jsonl`을 비대하게 만들어 빠른 context 로딩을 방해하면,
+완료 이벤트를 archive로 옮기고 dependency 판정을 위한 작은 stub만 남긴다:
+
+```bash
+python skills/review-driven-development/scripts/todo_manager.py --root . archive-completed
+```
+
 ## 작동 방식
 
 ```text

@@ -1,4 +1,4 @@
-# Workflow / 작업 흐름
+# Workflow
 
 ## Phase 0. Intake and project state
 
@@ -20,16 +20,18 @@ Fast context sync:
 context_inventory.py --sync
 context_inventory.py --sync --semantic-summary
 context_inventory.py --sync --semantic-search "<query>"
+context_inventory.py --sync --structure-completeness
 context_inventory.py --sync --bootstrap
 workflow_runner.py --phase sync
 workflow_runner.py --phase overview
 workflow_runner.py --phase semantic-index
 workflow_runner.py --phase semantic-search --query "<query>"
+workflow_runner.py --phase structure-completeness
 workflow_runner.py --phase bootstrap
 workflow_runner.py --phase commands
 ```
 
-`context-pack.md` should be the first Codex reference after sync. Use `--semantic-search "<query>"` to rank likely files, symbols, and terms before broad search. Ranking uses `sentence-transformers` embedding cosine when vectors are available, `scikit-learn` TF-IDF when installed, and lexical overlap otherwise. Use the full `context-inventory.json` or source files only when the pack, search result, or active TODO points to them. `--bootstrap` writes a marker-managed `AGENTS.md` block so future Codex sessions receive this policy automatically.
+`context-pack.md` should be the first Codex reference after sync. `project-structure-completeness.md` should be the durable structure/role/completeness reference for the current folder. Use `--semantic-search "<query>"` to rank likely files, symbols, and terms before broad search. Ranking uses `sentence-transformers` embedding cosine when vectors are available, `scikit-learn` TF-IDF when installed, and lexical overlap otherwise. Use the full `context-inventory.json` or source files only when the pack, structure file, search result, or active TODO points to them. `--bootstrap` writes a marker-managed `AGENTS.md` block so future Codex sessions receive this policy automatically.
 
 ## Phase 1. Source/file-driven requirements analysis
 
@@ -54,6 +56,7 @@ Output:
 requirement packet
 context-cache metadata
 compact context pack
+project structure/completeness summary
 semantic locator index
 repo-local bootstrap guidance when requested
 language/runtime options with pros/cons
@@ -87,6 +90,31 @@ Helper scripts:
 ```text
 subagent_brief_builder.py
 critic_ledger.py
+```
+
+## Optional Phase 2b. ChatGPT Pro feedback
+
+Run only when the user requests Pro/external AI feedback, passes `--pro-review`,
+or requests recursive Pro review. Do not run Pro automatically after each TODO,
+validation pass, or improvement critique.
+
+1. Build Markdown and YAML context packets from `context-pack.md`,
+   `context-inventory.json`, `project-structure-completeness.md/json`,
+   Git state, and current TODOs.
+2. Ask ChatGPT Pro through `agbrowse web-ai query`.
+3. Store the raw response and extracted TODO candidates under
+   `.codex/review-driven-development/pro-review/`.
+4. Append imported TODOs when `--pro-review-no-add-todos` is not set.
+5. If `--pro-review-recursive` is set, treat it as a final-only one-shot import:
+   run at most one live provider round after every active TODO is `completed`,
+   `blocked`, or `deferred`. `--phase once --pro-review-recursive` must defer
+   the provider call instead of running it before normal TODO execution.
+
+Helper scripts:
+
+```text
+pro_review.py
+workflow_runner.py --phase pro-review
 ```
 
 ## Phase 3. Main-agent decision and TODO generation

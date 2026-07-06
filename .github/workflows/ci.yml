@@ -46,4 +46,4 @@ jobs:
         run: python skills/review-driven-development/scripts/self_test.py
 
       - name: Run pytest smoke tests
-        run: pytest -q
+        run: pytest -q --basetemp .pytest_tmp

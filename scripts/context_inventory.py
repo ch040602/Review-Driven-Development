@@ -18,6 +18,7 @@ Extension notes:
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import hashlib
 import json
 import re
@@ -31,6 +32,9 @@ CONTEXT_INVENTORY_FILE = "context-inventory.json"
 CONTEXT_CACHE_FILE = "context-cache.json"
 CONTEXT_PACK_FILE = "context-pack.md"
 CONTEXT_SEMANTIC_INDEX_FILE = "context-semantic-index.json"
+PROJECT_STRUCTURE_COMPLETENESS_MD_FILE = "project-structure-completeness.md"
+PROJECT_STRUCTURE_COMPLETENESS_JSON_FILE = "project-structure-completeness.json"
+RELEASE_CRITICAL_COVERAGE_PROOF_FILE = "release-critical-coverage-proof.json"
 BOOTSTRAP_BEGIN = "<!-- review-driven-development:context-bootstrap:begin -->"
 BOOTSTRAP_END = "<!-- review-driven-development:context-bootstrap:end -->"
 LANG_BY_EXT = {
@@ -38,6 +42,7 @@ LANG_BY_EXT = {
     ".java": "java", ".kt": "kotlin", ".swift": "swift", ".go": "go", ".rs": "rust", ".rb": "ruby",
     ".php": "php", ".cs": "csharp", ".cpp": "cpp", ".cc": "cpp", ".cxx": "cpp", ".c": "c",
     ".h": "c/cpp header", ".hpp": "c/cpp header", ".sql": "sql", ".r": "r", ".ipynb": "notebook",
+    ".unity": "unity-scene", ".asmdef": "unity-assembly-definition",
 }
 DOC_EXTS = {".md", ".mdx", ".rst", ".txt"}
 DATA_EXTS = {".csv", ".tsv", ".jsonl", ".parquet", ".xlsx", ".xls", ".ndjson", ".log"}
@@ -47,6 +52,7 @@ BUILD_FILES = {
     "package.json", "pnpm-lock.yaml", "yarn.lock", "package-lock.json", "pyproject.toml", "requirements.txt",
     "Pipfile", "Cargo.toml", "go.mod", "pom.xml", "build.gradle", "Makefile", "Dockerfile",
     "docker-compose.yml", "compose.yml", "tsconfig.json", "vite.config.ts", "next.config.js",
+    "ProjectVersion.txt", "EditorBuildSettings.asset", "manifest.json",
 }
 SKIP_DIRS = {".git", ".codex", "node_modules", ".venv", "venv", "dist", "build", "target", ".next", ".cache", "coverage", ".pytest_cache", "__pycache__"}
 PRIORITY_DOC_NAMES = {
@@ -177,6 +183,480 @@ def iter_files(root: Path, max_files: int) -> Iterable[Path]:
                 return
 
 
+def iter_candidate_files(root: Path) -> Iterable[Path]:
+    """Yield all non-skipped files under root."""
+
+    for path in root.rglob("*"):
+        try:
+            rel_for_skip = path.relative_to(root)
+        except ValueError:
+            rel_for_skip = path
+        if should_skip(rel_for_skip):
+            continue
+        if path.is_file():
+            yield path
+
+
+UNITY_RELEASE_SCAN_PATTERN_HINTS = [
+    "unity/FluxDerbyUnity/Assets/FluxDerby/Scenes/*.unity",
+    "unity/FluxDerbyUnity/ProjectSettings/*",
+    "unity/FluxDerbyUnity/Packages/manifest.json",
+    "unity/FluxDerbyUnity/Assets/StreamingAssets/FluxDerby/**",
+    "unity/FluxDerbyUnity/Assets/FluxDerby/**/*.cs",
+    "src/FluxDerby.Core/**/*.cs",
+    "unity/FluxDerbyUnity/Assets/**/Editor/**/*.cs",
+    "unity/FluxDerbyUnity/Assets/FluxDerby/Tests/**",
+    "tests/**",
+    "README.md",
+    "VALIDATION.md",
+    "TODO*.md",
+    "docs/RELEASE*.md",
+    "docs/UNITY*.md",
+    "docs/STEAM*.md",
+    "tools/validate_*.py",
+    "tools/write_*.py",
+    "tools/generate_*.py",
+    "assets/data/*.json",
+    "assets/ascii/*",
+    "assets/svg/*.svg",
+    "assets/third_party_manifest/*.json",
+    "assets/external/craftpix/**/runtime/**",
+    "docs/balance_reports/*",
+    "docs/mockups/*",
+]
+
+MDPR_SKILL_RELEASE_SCAN_PATTERN_HINTS = [
+    "skills/mdpr-skill/SKILL.md",
+    "bin/mdpr-skill.js",
+    "packages/cli/src/**/*.ts",
+    "packages/*/src/**/*.ts",
+    "schemas/*.json",
+    "tests/**",
+    "package.json",
+    "package-lock.json",
+    "tsconfig*.json",
+    "README.md",
+    "docs/**/*.md",
+    "scripts/validate_*.py",
+    "scripts/check_*.py",
+    "scripts/install_mdpr.py",
+    "artifacts/pro-review/*.json",
+    "artifacts/codex-ppt-compat/*.json",
+    "artifacts/codex-ppt-generated-assets/*.json",
+]
+
+GENERIC_RELEASE_SCAN_PATTERN_HINTS = [
+    "package.json",
+    "pyproject.toml",
+    "requirements*.txt",
+    "tsconfig*.json",
+    "src/**",
+    "packages/**/src/**",
+    "tests/**",
+    "README.md",
+    "docs/**/*.md",
+    "scripts/validate_*.py",
+    "scripts/check_*.py",
+]
+
+UNITY_OMITTED_PATH_ALLOWLIST = [
+    ".git/**",
+    ".codex/**",
+    ".agents/skills/**",
+    "assets/external/craftpix/**/source/**",
+    "assets/external/craftpix/_archives/**",
+    "dist/**",
+    "logs/auto-runs/**",
+    "obj/**",
+    "saves/**",
+    "**/bin/**",
+    "**/obj/**",
+    "**/__pycache__/**",
+]
+
+MDPR_SKILL_OMITTED_PATH_ALLOWLIST = [
+    ".git/**",
+    ".codex/**",
+    ".agents/skills/**",
+    ".github/**",
+    ".cache/**",
+    "node_modules/**",
+    "dist/**",
+    "build/**",
+    "coverage/**",
+    "reports/**",
+    "logs/**",
+    "artifacts/**",
+    "promotion/**",
+    "docs/assets/**",
+    "**/bin/**",
+    "**/obj/**",
+    "**/__pycache__/**",
+]
+
+GENERIC_OMITTED_PATH_ALLOWLIST = [
+    ".git/**",
+    ".codex/**",
+    ".agents/skills/**",
+    ".github/**",
+    ".cache/**",
+    "node_modules/**",
+    "dist/**",
+    "build/**",
+    "coverage/**",
+    "reports/**",
+    "logs/**",
+    "artifacts/**",
+    "**/bin/**",
+    "**/obj/**",
+    "**/__pycache__/**",
+]
+
+
+def detect_release_profile(root: Path) -> str:
+    """Return the release-evidence profile for the current repository."""
+
+    package_path = root / "package.json"
+    package_text = read_text_snippet(package_path, max_chars=2000).lower() if package_path.exists() else ""
+    if (root / "unity" / "FluxDerbyUnity" / "ProjectSettings" / "ProjectVersion.txt").exists():
+        return "unity"
+    if (root / "skills" / "mdpr-skill" / "SKILL.md").exists() or '"name": "mdpr-skill"' in package_text:
+        return "mdpr-skill"
+    return "generic"
+
+
+def release_pattern_hints(profile: str) -> List[str]:
+    if profile == "unity":
+        return UNITY_RELEASE_SCAN_PATTERN_HINTS
+    if profile == "mdpr-skill":
+        return MDPR_SKILL_RELEASE_SCAN_PATTERN_HINTS
+    return GENERIC_RELEASE_SCAN_PATTERN_HINTS
+
+
+def omitted_path_allowlist(profile: str) -> List[str]:
+    if profile == "unity":
+        return UNITY_OMITTED_PATH_ALLOWLIST
+    if profile == "mdpr-skill":
+        return MDPR_SKILL_OMITTED_PATH_ALLOWLIST
+    return GENERIC_OMITTED_PATH_ALLOWLIST
+
+
+def release_scan_bucket(path: str, profile: str = "generic") -> str | None:
+    """Return the release-critical scan bucket for a normalized relative path."""
+
+    if profile == "mdpr-skill":
+        if path == "skills/mdpr-skill/SKILL.md":
+            return "skill_instruction"
+        if path == "bin/mdpr-skill.js" or path.startswith("packages/cli/src/"):
+            return "cli_surface"
+        if path.startswith("packages/") and "/src/" in path and path.endswith(".ts"):
+            return "package_sources"
+        if path.startswith("schemas/") and path.endswith(".json"):
+            return "schema_contracts"
+        if path.startswith("tests/"):
+            return "tests"
+        if path in {"package.json", "package-lock.json", "tsconfig.json", "tsconfig.build.json"}:
+            return "package_config"
+        if path == "README.md" or (path.startswith("docs/") and path.endswith(".md")):
+            return "docs"
+        if path.startswith("scripts/") and path.endswith(".py") and Path(path).name.startswith(("validate_", "check_", "install_mdpr")):
+            return "validation_scripts"
+        if (
+            path.startswith("artifacts/pro-review/")
+            or path.startswith("artifacts/codex-ppt-compat/")
+            or path.startswith("artifacts/codex-ppt-generated-assets/")
+        ) and path.endswith(".json"):
+            return "compatibility_artifacts"
+        return None
+
+    if profile != "unity":
+        if path in {"package.json", "pyproject.toml", "tsconfig.json", "tsconfig.build.json"} or path.startswith("requirements"):
+            return "build_config"
+        if path.startswith("src/") or (path.startswith("packages/") and "/src/" in path):
+            return "source"
+        if path.startswith("tests/"):
+            return "tests"
+        if path == "README.md" or (path.startswith("docs/") and path.endswith(".md")):
+            return "docs"
+        if path.startswith("scripts/") and path.endswith(".py") and Path(path).name.startswith(("validate_", "check_")):
+            return "validation_scripts"
+        return None
+
+    if path.startswith("unity/FluxDerbyUnity/Assets/FluxDerby/Scenes/") and path.endswith(".unity"):
+        return "unity_scenes"
+    if path.startswith("unity/FluxDerbyUnity/ProjectSettings/"):
+        return "project_settings"
+    if path == "unity/FluxDerbyUnity/Packages/manifest.json":
+        return "package_manifest"
+    if path.startswith("unity/FluxDerbyUnity/Assets/StreamingAssets/FluxDerby/"):
+        return "streaming_assets"
+    if path.startswith("unity/FluxDerbyUnity/Assets/FluxDerby/Tests/"):
+        return "unity_tests"
+    if path.startswith("tests/"):
+        return "repo_tests"
+    if path.startswith("unity/FluxDerbyUnity/Assets/") and "/Editor/" in path and path.endswith(".cs"):
+        return "editor_build_scripts"
+    if path.startswith("unity/FluxDerbyUnity/Assets/FluxDerby/") and path.endswith(".cs"):
+        return "unity_runtime_scripts"
+    if path.startswith("src/FluxDerby.Core/") and path.endswith(".cs"):
+        return "core_runtime_scripts"
+    if path in {"README.md", "VALIDATION.md"} or path.startswith("TODO") and path.endswith(".md"):
+        return "release_docs"
+    if path.startswith("docs/") and path.endswith(".md") and any(
+        path.startswith(prefix) for prefix in ("docs/RELEASE", "docs/UNITY", "docs/STEAM")
+    ):
+        return "release_docs"
+    if path.startswith("tools/") and path.endswith(".py") and Path(path).name.startswith(("validate_", "write_", "generate_")):
+        return "validation_tools"
+    if path.startswith("assets/data/") and path.endswith(".json"):
+        return "game_data"
+    if path.startswith("assets/third_party_manifest/") and path.endswith(".json"):
+        return "game_data"
+    if path.startswith("assets/ascii/"):
+        return "runtime_art_assets"
+    if path.startswith("assets/svg/") and path.endswith(".svg"):
+        return "runtime_art_assets"
+    if path.startswith("assets/external/craftpix/") and "/runtime/" in path:
+        return "runtime_art_assets"
+    if path.startswith("docs/balance_reports/") or path.startswith("docs/mockups/"):
+        return "release_docs"
+    return None
+
+
+def collect_scan_paths(root: Path, max_files: int, *, release_profile: str) -> Dict[str, Any]:
+    """Collect bounded scan paths and backfill release-critical paths."""
+
+    all_paths = [path for path in iter_candidate_files(root)]
+    bounded = all_paths[:max_files]
+    selected: Dict[str, Path] = {
+        str(path.relative_to(root)).replace("\\", "/"): path for path in bounded
+    }
+    release_backfilled: List[str] = []
+    for path in all_paths:
+        rel = str(path.relative_to(root)).replace("\\", "/")
+        if release_scan_bucket(rel, release_profile) is None or rel in selected:
+            continue
+        selected[rel] = path
+        release_backfilled.append(rel)
+    omitted_paths = [
+        str(path.relative_to(root)).replace("\\", "/")
+        for path in all_paths
+        if str(path.relative_to(root)).replace("\\", "/") not in selected
+    ]
+    return {
+        "paths": [selected[key] for key in sorted(selected)],
+        "bounded_count": len(bounded),
+        "eligible_count": len(all_paths),
+        "release_backfilled_paths": sorted(release_backfilled),
+        "omitted_paths": sorted(omitted_paths),
+    }
+
+
+def required_release_buckets(profile: str) -> List[str]:
+    if profile == "unity":
+        return [
+            "unity_scenes",
+            "project_settings",
+            "package_manifest",
+            "streaming_assets",
+            "unity_runtime_scripts",
+            "core_runtime_scripts",
+            "editor_build_scripts",
+            "unity_tests",
+            "repo_tests",
+            "release_docs",
+            "validation_tools",
+            "game_data",
+            "runtime_art_assets",
+        ]
+    if profile == "mdpr-skill":
+        return [
+            "skill_instruction",
+            "cli_surface",
+            "package_sources",
+            "schema_contracts",
+            "tests",
+            "package_config",
+            "docs",
+            "validation_scripts",
+            "compatibility_artifacts",
+        ]
+    return ["build_config", "source", "tests", "docs"]
+
+
+def build_release_scan_coverage(all_release_paths: Iterable[str], scanned_paths: Iterable[str], *, profile: str) -> Dict[str, Any]:
+    """Build release-critical path coverage for bounded inventory scans."""
+
+    scanned = set(scanned_paths)
+    buckets: Dict[str, Dict[str, Any]] = {}
+    for rel in sorted(all_release_paths):
+        bucket = release_scan_bucket(rel, profile)
+        if bucket is None:
+            continue
+        item = buckets.setdefault(bucket, {"total": 0, "included": 0, "missing": [], "sample": []})
+        item["total"] += 1
+        if rel in scanned:
+            item["included"] += 1
+            if len(item["sample"]) < 12:
+                item["sample"].append(rel)
+        else:
+            item["missing"].append(rel)
+    required_buckets = required_release_buckets(profile)
+    for bucket in required_buckets:
+        buckets.setdefault(bucket, {"total": 0, "included": 0, "missing": [], "sample": []})
+    missing_required = [
+        bucket for bucket in required_buckets
+        if int(buckets[bucket]["total"]) <= 0 or int(buckets[bucket]["included"]) < int(buckets[bucket]["total"])
+    ]
+    return {
+        "schema_version": 1,
+        "profile": profile,
+        "status": "pass" if not missing_required else "fail",
+        "required_buckets": required_buckets,
+        "buckets": buckets,
+        "missing_required_buckets": missing_required,
+    }
+
+
+def mdpr_skill_schema_sync_status(root: Path) -> Dict[str, Any]:
+    """Return schema-sync validation status from an actual MDPR sync report."""
+
+    candidates = [
+        root / ".codex" / "review-driven-development" / "schema-sync-evidence.json",
+        root / "artifacts" / "pro-review" / "mdpr-skill-runtime-sync-review-20260706.json",
+    ]
+    for path in candidates:
+        if not path.exists():
+            continue
+        try:
+            report = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        mdpr_path = str(report.get("scope", {}).get("mdprPath", "")).strip()
+        if mdpr_path and not (root / mdpr_path).exists():
+            return {
+                "id": "schema_sync_gate_passed",
+                "status": "not_evaluated",
+                "source": f"{path.relative_to(root).as_posix()} references missing MDPR checkout {mdpr_path}",
+            }
+        validations: List[Mapping[str, Any]] = []
+        for key in ("localValidationAfterReview", "localValidationBeforeReview", "validations"):
+            value = report.get(key)
+            if isinstance(value, list):
+                validations.extend(item for item in value if isinstance(item, Mapping))
+        for item in validations:
+            command = str(item.get("command", ""))
+            if "gate validate-schema-sync" not in command:
+                continue
+            if item.get("status") == "pass" and item.get("findings", []) in ([], None):
+                return {
+                    "id": "schema_sync_gate_passed",
+                    "status": "proven",
+                    "source": path.relative_to(root).as_posix(),
+                    "command": command,
+                }
+            return {
+                "id": "schema_sync_gate_passed",
+                "status": "not_evaluated",
+                "source": path.relative_to(root).as_posix(),
+            }
+    return {
+        "id": "schema_sync_gate_passed",
+        "status": "not_evaluated",
+        "source": "schema sync command/report required",
+    }
+
+
+def build_truncation_metadata(limits: Mapping[str, int], scan: Mapping[str, Any], coverage: Mapping[str, Any], *, release_profile: str) -> Dict[str, Any]:
+    """Return explicit qualification for bounded inventory truncation."""
+
+    eligible_count = int(scan.get("eligible_count", 0))
+    bounded_count = int(scan.get("bounded_count", 0))
+    max_files = int(limits.get("max_files", 0))
+    truncated = eligible_count > max_files
+    omitted = len(scan.get("omitted_paths", []))
+    return {
+        "schema_version": 1,
+        "is_truncated": truncated,
+        "truncation_reason": "bounded max_files limit reached" if truncated else "not_truncated",
+        "max_files": max_files,
+        "bounded_scanned_file_count": bounded_count,
+        "effective_scanned_file_count": bounded_count + len(scan.get("release_backfilled_paths", [])),
+        "eligible_file_count": eligible_count,
+        "omitted_path_count": omitted,
+        "release_backfilled_count": len(scan.get("release_backfilled_paths", [])),
+        "included_release_path_patterns": release_pattern_hints(release_profile),
+        "omitted_path_allowlist": omitted_path_allowlist(release_profile),
+        "release_scan_coverage_status": coverage.get("status"),
+        "release_profile": release_profile,
+    }
+
+
+def allowlist_rule_for_omitted_path(path: str, profile: str = "generic") -> str | None:
+    """Return the non-release allowlist rule that explains an omitted path."""
+
+    for rule in omitted_path_allowlist(profile):
+        if fnmatch.fnmatch(path, rule):
+            return rule
+    return None
+
+
+def build_release_critical_coverage_proof(
+    data: Mapping[str, Any],
+    scan: Mapping[str, Any],
+    coverage: Mapping[str, Any],
+) -> Dict[str, Any]:
+    """Build deterministic proof that truncated scans still cover release-critical paths."""
+
+    release_profile = str(data.get("release_profile") or "generic")
+    omitted_paths = [str(path) for path in scan.get("omitted_paths", [])]
+    allowlist_buckets: Dict[str, Dict[str, Any]] = {
+        rule: {"count": 0, "sample": []}
+        for rule in omitted_path_allowlist(release_profile)
+    }
+    unclassified_paths: List[str] = []
+    for path in omitted_paths:
+        rule = allowlist_rule_for_omitted_path(path, release_profile)
+        if rule is None:
+            unclassified_paths.append(path)
+            continue
+        bucket = allowlist_buckets[rule]
+        bucket["count"] += 1
+        if len(bucket["sample"]) < 12:
+            bucket["sample"].append(path)
+    unclassified_count = len(unclassified_paths)
+    release_critical_covered = (
+        coverage.get("status") == "pass"
+        and unclassified_count == 0
+    )
+    full_tree_covered = not bool(data.get("scan_truncated"))
+    return {
+        "schema_version": 1,
+        "created_at": data.get("created_at"),
+        "review_scope": "full-tree-covered" if full_tree_covered else "release-critical-covered-only",
+        "full_tree_covered": full_tree_covered,
+        "release_critical_covered": release_critical_covered,
+        "scan_truncated": data.get("scan_truncated"),
+        "inventory_mode": data.get("inventory_mode"),
+        "bounded_scanned_file_count": scan.get("bounded_count"),
+        "effective_scanned_file_count": data.get("scanned_file_count"),
+        "eligible_file_count": scan.get("eligible_count"),
+        "release_backfilled_count": len(scan.get("release_backfilled_paths", [])),
+        "omitted_path_count": len(omitted_paths),
+        "omitted_path_classification": {
+            "total": len(omitted_paths),
+            "unclassified_count": unclassified_count,
+            "unclassified_paths": unclassified_paths[:50],
+            "allowlist_buckets": allowlist_buckets,
+        },
+        "release_scan_coverage": coverage,
+        "generated_by": {
+            "source_command": "python C:/Users/hcslab_523/.codex/skills/review-driven-development/scripts/context_inventory.py --root . --sync --structure-completeness --force",
+            "source_script": "C:/Users/hcslab_523/.codex/skills/review-driven-development/scripts/context_inventory.py",
+        },
+    }
+
+
 def classify_file(file_path: Path, root: Path) -> Dict[str, Any]:
     """Classify one file for planning and critic selection."""
     rel = str(file_path.relative_to(root)).replace("\\", "/")
@@ -197,7 +677,8 @@ def classify_file(file_path: Path, root: Path) -> Dict[str, Any]:
 
 def collect_classified_files(root: Path, max_files: int) -> List[Dict[str, Any]]:
     """Return classified file metadata."""
-    return [classify_file(path, root) for path in iter_files(root, max_files=max_files)]
+    scan = collect_scan_paths(root, max_files=max_files)
+    return [classify_file(path, root) for path in scan["paths"]]
 
 
 def count_languages(classified: Iterable[Mapping[str, Any]]) -> Counter[str]:
@@ -704,7 +1185,64 @@ def infer_frameworks(root: Path, grouped: Mapping[str, List[str]]) -> List[str]:
         frameworks.append("go-module")
     if "Cargo.toml" in build_names:
         frameworks.append("rust-cargo")
+    if is_unity_project(root, grouped):
+        frameworks.append("unity")
     return sorted(set(frameworks))
+
+
+def is_unity_project(root: Path, grouped: Mapping[str, List[str]]) -> bool:
+    """Return True when the tree has a Unity project boundary."""
+
+    candidates = {Path(rel).as_posix() for key in ("source_files", "build_files", "data_files") for rel in grouped.get(key, [])}
+    if (root / "unity" / "FluxDerbyUnity" / "ProjectSettings" / "ProjectVersion.txt").exists():
+        return True
+    return any(
+        rel.endswith("/ProjectSettings/ProjectVersion.txt")
+        or rel.endswith("/ProjectSettings/EditorBuildSettings.asset")
+        or rel.endswith("/Packages/manifest.json")
+        or rel.endswith(".asmdef")
+        for rel in candidates
+    )
+
+
+def unity_release_signals(root: Path, grouped: Mapping[str, List[str]]) -> Dict[str, Any]:
+    """Summarize Unity-specific release structure without requiring Unity Editor."""
+
+    unity_root = root / "unity" / "FluxDerbyUnity"
+    source_files = [Path(rel).as_posix() for rel in grouped.get("source_files", [])]
+    build_files = [Path(rel).as_posix() for rel in grouped.get("build_files", [])]
+    unity_sources = [rel for rel in source_files if rel.startswith("unity/FluxDerbyUnity/")]
+    unity_assets = [rel for rel in [*source_files, *grouped.get("data_files", []), *build_files] if rel.startswith("unity/FluxDerbyUnity/Assets/")]
+    unity_scenes = [rel for rel in source_files if rel.startswith("unity/FluxDerbyUnity/Assets/") and rel.endswith(".unity")]
+    unity_asmdefs = [rel for rel in source_files if rel.startswith("unity/FluxDerbyUnity/") and rel.endswith(".asmdef")]
+    project_settings = sorted(
+        rel for rel in build_files if rel.startswith("unity/FluxDerbyUnity/ProjectSettings/")
+    )
+    package_manifests = sorted(
+        rel for rel in build_files if rel.startswith("unity/FluxDerbyUnity/Packages/")
+    )
+    unity_build_scripts = [
+        rel for rel in unity_sources if "Build" in Path(rel).name or "Editor" in Path(rel).parts
+    ]
+    unity_present = is_unity_project(root, grouped)
+    return {
+        "unity_project_root": "unity/FluxDerbyUnity" if unity_root.exists() else None,
+        "project_settings": project_settings,
+        "package_manifests": package_manifests,
+        "scene_files": sorted(unity_scenes),
+        "asset_file_count": len(unity_assets),
+        "asmdef_files": sorted(unity_asmdefs),
+        "unity_csharp_scripts": sorted(rel for rel in unity_sources if rel.endswith(".cs")),
+        "unity_build_scripts": sorted(unity_build_scripts),
+        "core_library_ready": bool(grouped.get("source_files")),
+        "unity_steam_runtime_ready": bool(
+            unity_present
+            and project_settings
+            and package_manifests
+            and unity_scenes
+            and unity_build_scripts
+        ),
+    }
 
 
 def detect_security_surface(grouped: Mapping[str, List[str]]) -> bool:
@@ -748,7 +1286,17 @@ def build_inventory(
     """
 
     limits = inventory_limits(mode, max_files=max_files)
-    classified = collect_classified_files(root, max_files=limits["max_files"])
+    release_profile = detect_release_profile(root)
+    scan = collect_scan_paths(root, max_files=limits["max_files"], release_profile=release_profile)
+    classified = [classify_file(path, root) for path in scan["paths"]]
+    scanned_paths = [str(item["path"]) for item in classified]
+    all_release_paths = [
+        str(path.relative_to(root)).replace("\\", "/")
+        for path in iter_candidate_files(root)
+        if release_scan_bucket(str(path.relative_to(root)).replace("\\", "/"), release_profile) is not None
+    ]
+    release_scan_coverage = build_release_scan_coverage(all_release_paths, scanned_paths, profile=release_profile)
+    truncation = build_truncation_metadata(limits, scan, release_scan_coverage, release_profile=release_profile)
     language_counts = count_languages(classified)
     grouped = group_paths(classified)
     docs = prioritize_paths(grouped.get("docs", []))
@@ -756,19 +1304,24 @@ def build_inventory(
     tests = prioritize_paths(grouped.get("tests", []))
     build_files = prioritize_paths(grouped.get("build_files", []))
     source_files = prioritize_paths(grouped.get("source_files", []))
+    unity_signals = unity_release_signals(root, grouped)
     data: Dict[str, Any] = {
         "schema_version": 1,
         "created_at": now_iso(),
         "root": str(root),
         "cache_strategy": "bounded-file-metadata-fingerprint-plus-compact-context-pack",
         "inventory_mode": mode,
+        "release_profile": release_profile,
         "limits": limits,
         "scanned_file_count": len(classified),
-        "scan_truncated": len(classified) >= limits["max_files"],
+        "scan_truncated": truncation["is_truncated"],
+        "truncation": truncation,
+        "release_scan_coverage": release_scan_coverage,
         "fingerprint": build_file_fingerprint(root, max_files=limits["max_files"]),
         "language_counts": dict(language_counts),
         "primary_languages": [lang for lang, _ in language_counts.most_common(5)],
         "frameworks": infer_frameworks(root, grouped),
+        "unity_release_signals": unity_signals,
         "docs": docs[: limits["docs"]],
         "data_files": data_files[: limits["data_files"]],
         "tests": tests[: limits["tests"]],
@@ -794,6 +1347,7 @@ def build_inventory(
         )
     data["recommended_critics"] = choose_recommended_critics(data)
     data["role_map"] = build_role_map(data)
+    data["release_critical_coverage_proof"] = build_release_critical_coverage_proof(data, scan, release_scan_coverage)
     return data
 
 
@@ -806,6 +1360,8 @@ def build_context_pack(data: Mapping[str, Any], *, max_chars: int = 12000) -> st
     """Build a compact Markdown pack optimized for quick Codex reference."""
 
     fingerprint = data.get("fingerprint") if isinstance(data.get("fingerprint"), Mapping) else {}
+    truncation = data.get("truncation") if isinstance(data.get("truncation"), Mapping) else {}
+    coverage = data.get("release_scan_coverage") if isinstance(data.get("release_scan_coverage"), Mapping) else {}
     sections: List[str] = [
         "# review-driven-development context pack",
         "",
@@ -815,6 +1371,11 @@ def build_context_pack(data: Mapping[str, Any], *, max_chars: int = 12000) -> st
         f"- Created: `{data.get('created_at')}`",
         f"- Root: `{data.get('root')}`",
         f"- Files scanned: `{data.get('scanned_file_count')}`",
+        f"- Scan truncated: `{data.get('scan_truncated')}`",
+        f"- Truncation reason: `{truncation.get('truncation_reason', 'unknown')}`",
+        f"- Omitted path count: `{truncation.get('omitted_path_count', 0)}`",
+        f"- Release-critical scan coverage: `{coverage.get('status', 'unknown')}`",
+        f"- Release profile: `{data.get('release_profile', 'generic')}`",
         f"- Inventory mode: `{data.get('inventory_mode', 'standard')}`",
         f"- Fingerprint: `{fingerprint.get('digest', '')}`",
         f"- Newest file: `{fingerprint.get('newest_path', '')}`",
@@ -870,6 +1431,311 @@ def build_context_pack(data: Mapping[str, Any], *, max_chars: int = 12000) -> st
     return text[: max(0, max_chars - 80)].rstrip() + "\n\n[truncated: increase --max-pack-chars for more]\n"
 
 
+def build_completeness_assessment(data: Mapping[str, Any]) -> Dict[str, Any]:
+    """Build a heuristic project completeness assessment from inventory data."""
+
+    checks = [
+        {
+            "name": "source_code",
+            "status": "present" if data.get("has_existing_code") else "missing",
+            "weight": 25,
+            "evidence": f"{data.get('total_source_files', 0)} source files detected",
+        },
+        {
+            "name": "tests",
+            "status": "present" if data.get("has_tests") else "missing",
+            "weight": 20,
+            "evidence": f"{data.get('total_tests', 0)} test files detected",
+        },
+        {
+            "name": "build_or_package_config",
+            "status": "present" if data.get("build_files") else "missing",
+            "weight": 15,
+            "evidence": ", ".join(list(data.get("build_files", []))[:8]) or "no build files detected",
+        },
+        {
+            "name": "documentation",
+            "status": "present" if data.get("docs") else "missing",
+            "weight": 15,
+            "evidence": f"{data.get('total_docs', 0)} documentation files detected",
+        },
+        {
+            "name": "role_map",
+            "status": "present" if data.get("role_map") else "missing",
+            "weight": 15,
+            "evidence": f"{len(data.get('role_map', []))} responsibility roles inferred",
+        },
+        {
+            "name": "review_signals",
+            "status": "present" if data.get("recommended_critics") else "missing",
+            "weight": 10,
+            "evidence": ", ".join(data.get("recommended_critics", [])) or "no critic routing signals",
+        },
+    ]
+    unity_signals = data.get("unity_release_signals", {}) if isinstance(data.get("unity_release_signals"), Mapping) else {}
+    if unity_signals.get("unity_project_root"):
+        checks.append(
+            {
+                "name": "unity_steam_runtime_structure",
+                "status": "present" if unity_signals.get("unity_steam_runtime_ready") else "missing",
+                "weight": 0,
+                "evidence": (
+                    f"{unity_signals.get('unity_project_root')} scenes={len(unity_signals.get('scene_files', []))} "
+                    f"project_settings={len(unity_signals.get('project_settings', []))} "
+                    f"build_scripts={len(unity_signals.get('unity_build_scripts', []))}"
+                ),
+            }
+        )
+    score = sum(check["weight"] for check in checks if check["status"] == "present")
+    if score >= 85:
+        label = "high"
+    elif score >= 60:
+        label = "medium"
+    else:
+        label = "low"
+    gaps = [check for check in checks if check["status"] != "present"]
+    return {
+        "schema_version": 1,
+        "created_at": data.get("created_at"),
+        "root": data.get("root"),
+        "inventory_mode": data.get("inventory_mode"),
+        "score": score,
+        "label": label,
+        "checks": checks,
+        "gaps": gaps,
+        "review_focus": [
+            "Verify TODOs against the role map before opening broad source trees.",
+            "Prioritize missing or weak completeness checks when proposing improvements.",
+            "Treat this score as a heuristic triage signal, not proof of production readiness.",
+        ],
+    }
+
+
+def build_project_structure_completeness(data: Mapping[str, Any]) -> Dict[str, Any]:
+    """Build a reusable structure, role, and completeness packet."""
+
+    assessment = build_completeness_assessment(data)
+    release_scan_coverage = data.get("release_scan_coverage", {})
+    release_profile = str(data.get("release_profile") or "generic")
+    root = Path(str(data.get("root") or "."))
+    if release_profile == "unity":
+        release_note = "Inventory coverage proves local release-critical files were included in context only; it does not prove Unity Editor, Steamworks, rendered capture, hardware QA, external playtests, or legal review."
+        release_constraints = [
+            {"id": "unity_project_structure", "status": "proven", "source": "unity_release_signals"},
+            {"id": "release_critical_scan_coverage", "status": "proven" if release_scan_coverage.get("status") == "pass" else "not_evaluated", "source": "release_scan_coverage"},
+            {"id": "unity_editor_execution", "status": "external_manual", "source": "Unity Editor unavailable to inventory"},
+            {"id": "steamworks_upload_review", "status": "external_manual", "source": "Steamworks credentials/review unavailable to inventory"},
+            {"id": "rendered_capture", "status": "external_manual", "source": "Rendered capture unavailable to inventory"},
+            {"id": "hardware_qa", "status": "external_manual", "source": "Steam Deck/controller hardware unavailable to inventory"},
+            {"id": "legal_review", "status": "external_manual", "source": "Legal/license review unavailable to inventory"},
+        ]
+        external_manual_status = "pending_external_manual_validation"
+        final_release_evidence_status = "external_manual_pending"
+    elif release_profile == "mdpr-skill":
+        schema_sync_constraint = mdpr_skill_schema_sync_status(root)
+        release_note = "Inventory coverage proves mdpr-skill local release-critical files were included in context. MDPR remains the deterministic runtime owner for parsing, layout, rendering, PPTX/PDF output, and validation pass/fail decisions."
+        release_constraints = [
+            {"id": "skill_instruction", "status": "proven" if release_scan_coverage.get("status") == "pass" else "not_evaluated", "source": "release_scan_coverage"},
+            {"id": "schema_contract_files_covered", "status": "proven" if release_scan_coverage.get("status") == "pass" else "not_evaluated", "source": "release_scan_coverage"},
+            schema_sync_constraint,
+            {"id": "cli_and_package_surface", "status": "proven" if release_scan_coverage.get("status") == "pass" else "not_evaluated", "source": "release_scan_coverage"},
+            {"id": "docs_and_review_artifacts", "status": "proven" if release_scan_coverage.get("status") == "pass" else "not_evaluated", "source": "release_scan_coverage"},
+            {"id": "mdpr_runtime_ownership_boundary", "status": "external_runtime_owned", "source": "MDPR owns deterministic rendering and validation outcomes"},
+        ]
+        external_manual_status = "not_required_for_local_static_skill_profile"
+        final_release_evidence_status = "local_static_profile_pass" if release_scan_coverage.get("status") == "pass" else "local_static_profile_incomplete"
+    else:
+        release_note = "Inventory coverage proves generic local release-critical files were included in context only; project-specific runtime/manual gates must be defined by the repository."
+        release_constraints = [
+            {"id": "release_critical_scan_coverage", "status": "proven" if release_scan_coverage.get("status") == "pass" else "not_evaluated", "source": "release_scan_coverage"},
+            {"id": "project_specific_runtime_gates", "status": "not_evaluated", "source": "generic profile"},
+        ]
+        external_manual_status = "not_evaluated_by_inventory"
+        final_release_evidence_status = "generic_local_static_profile"
+    release_evidence_completeness = {
+        "schema_version": 1,
+        "status": "local_static_scan_covered" if isinstance(release_scan_coverage, Mapping) and release_scan_coverage.get("status") == "pass" else "incomplete",
+        "profile": release_profile,
+        "release_scan_coverage_status": release_scan_coverage.get("status") if isinstance(release_scan_coverage, Mapping) else None,
+        "coverage_proof_path": str(STATE_DIR / RELEASE_CRITICAL_COVERAGE_PROOF_FILE).replace("\\", "/"),
+        "coverage_proof_scope": data.get("release_critical_coverage_proof", {}).get("review_scope") if isinstance(data.get("release_critical_coverage_proof"), Mapping) else None,
+        "coverage_proof_unclassified_count": data.get("release_critical_coverage_proof", {}).get("omitted_path_classification", {}).get("unclassified_count") if isinstance(data.get("release_critical_coverage_proof"), Mapping) else None,
+        "external_manual_status": external_manual_status,
+        "note": release_note,
+    }
+    release_verdict = {
+        "schema_version": 1,
+        "profile": release_profile,
+        "structure_completeness_score": assessment.get("score"),
+        "release_gate_status": "local_static_structure_gate_pass" if release_evidence_completeness["status"] == "local_static_scan_covered" else "local_static_structure_gate_incomplete",
+        "external_manual_status": external_manual_status,
+        "final_release_evidence_status": final_release_evidence_status,
+        "constraints": release_constraints,
+    }
+    return {
+        "schema_version": 1,
+        "created_at": data.get("created_at"),
+        "root": data.get("root"),
+        "inventory": {
+            "mode": data.get("inventory_mode"),
+            "release_profile": release_profile,
+            "scanned_file_count": data.get("scanned_file_count"),
+            "scan_truncated": data.get("scan_truncated"),
+            "truncation": data.get("truncation", {}),
+            "release_scan_coverage": release_scan_coverage,
+            "primary_languages": data.get("primary_languages", []),
+            "frameworks": data.get("frameworks", []),
+            "unity_release_signals": data.get("unity_release_signals", {}),
+            "total_source_files": data.get("total_source_files", 0),
+            "total_tests": data.get("total_tests", 0),
+            "total_docs": data.get("total_docs", 0),
+            "total_build_files": data.get("total_build_files", 0),
+            "total_data_files": data.get("total_data_files", 0),
+        },
+        "structure": {
+            "build_files": data.get("build_files", []),
+            "docs": data.get("docs", []),
+            "tests": data.get("tests", []),
+            "data_files": data.get("data_files", []),
+            "source_files_sample": data.get("source_files_sample", []),
+            "reuse_candidates": data.get("reuse_candidates", []),
+        },
+        "roles": data.get("role_map", []),
+        "structure_completeness": assessment,
+        "release_evidence_completeness": release_evidence_completeness,
+        "release_verdict": release_verdict,
+        "completeness": assessment,
+        "recommended_critics": data.get("recommended_critics", []),
+    }
+
+
+def format_completeness_checks(checks: Iterable[Mapping[str, Any]]) -> List[str]:
+    lines: List[str] = []
+    for check in checks:
+        lines.append(
+            f"- `{check.get('name')}`: `{check.get('status')}` "
+            f"({check.get('weight')} pts) - {check.get('evidence')}"
+        )
+    return lines or ["- none"]
+
+
+def build_project_structure_completeness_md(packet: Mapping[str, Any], *, max_paths: int = 80) -> str:
+    """Render the project structure/completeness packet as Markdown."""
+
+    inventory = packet.get("inventory", {}) if isinstance(packet.get("inventory"), Mapping) else {}
+    structure = packet.get("structure", {}) if isinstance(packet.get("structure"), Mapping) else {}
+    completeness = packet.get("completeness", {}) if isinstance(packet.get("completeness"), Mapping) else {}
+    truncation = inventory.get("truncation", {}) if isinstance(inventory.get("truncation"), Mapping) else {}
+    release_coverage = inventory.get("release_scan_coverage", {}) if isinstance(inventory.get("release_scan_coverage"), Mapping) else {}
+    release_evidence = packet.get("release_evidence_completeness", {}) if isinstance(packet.get("release_evidence_completeness"), Mapping) else {}
+    release_verdict = packet.get("release_verdict", {}) if isinstance(packet.get("release_verdict"), Mapping) else {}
+    unity_signals = inventory.get("unity_release_signals", {}) if isinstance(inventory.get("unity_release_signals"), Mapping) else {}
+    lines = [
+        "# Project Structure And Completeness",
+        "",
+        "Use this file as the durable RDD summary of the current folder structure, responsibility roles, and heuristic completion status.",
+        "",
+        "## Snapshot",
+        f"- Created: `{packet.get('created_at')}`",
+        f"- Root: `{packet.get('root')}`",
+        f"- Inventory mode: `{inventory.get('mode')}`",
+        f"- Release profile: `{inventory.get('release_profile', 'generic')}`",
+        f"- Files scanned: `{inventory.get('scanned_file_count')}`",
+        f"- Scan truncated: `{inventory.get('scan_truncated')}`",
+        f"- Truncation reason: `{truncation.get('truncation_reason', 'unknown')}`",
+        f"- Omitted path count: `{truncation.get('omitted_path_count', 0)}`",
+        f"- Primary languages: `{', '.join(inventory.get('primary_languages', [])) or 'none detected'}`",
+        f"- Frameworks: `{', '.join(inventory.get('frameworks', [])) or 'none detected'}`",
+    ]
+    if unity_signals.get("unity_project_root"):
+        lines.extend(
+            [
+                f"- Unity project: `{unity_signals.get('unity_project_root')}`",
+                f"- Unity readiness: `core_library_ready={unity_signals.get('core_library_ready')}`, `unity_steam_runtime_ready={unity_signals.get('unity_steam_runtime_ready')}`",
+            ]
+        )
+    lines.extend(
+        [
+            "",
+            "## Completeness",
+            f"- Score: `{completeness.get('score')}/100`",
+            f"- Label: `{completeness.get('label')}`",
+            "",
+            "## Structure Completeness",
+            f"- structure_completeness_score: `{completeness.get('score')}/100`",
+            f"- structure_completeness_label: `{completeness.get('label')}`",
+            "",
+            "## Release Evidence Completeness",
+            f"- release_profile: `{release_evidence.get('profile')}`",
+            f"- release_evidence_completeness_status: `{release_evidence.get('status')}`",
+            f"- release_scan_coverage_status: `{release_evidence.get('release_scan_coverage_status')}`",
+            f"- external_manual_status: `{release_evidence.get('external_manual_status')}`",
+            f"- note: {release_evidence.get('note')}",
+            "",
+            "## Release Verdict",
+            f"- structure_completeness_score: `{release_verdict.get('structure_completeness_score')}`",
+            f"- release_gate_status: `{release_verdict.get('release_gate_status')}`",
+            f"- external_manual_status: `{release_verdict.get('external_manual_status')}`",
+            f"- final_release_evidence_status: `{release_verdict.get('final_release_evidence_status')}`",
+            "- constraint_statuses:",
+            *[
+                f"  - `{item.get('id')}`: `{item.get('status')}` ({item.get('source')})"
+                for item in release_verdict.get("constraints", [])
+                if isinstance(item, Mapping)
+            ],
+            "",
+            "## Inventory Truncation",
+            f"- scan_truncated: `{inventory.get('scan_truncated')}`",
+            f"- truncation_reason: `{truncation.get('truncation_reason', 'unknown')}`",
+            f"- omitted_path_count: `{truncation.get('omitted_path_count', 0)}`",
+            f"- release_backfilled_count: `{truncation.get('release_backfilled_count', 0)}`",
+            f"- release_scan_coverage_status: `{release_coverage.get('status', 'unknown')}`",
+            f"- included_release_path_patterns: `{len(truncation.get('included_release_path_patterns', []))}`",
+            f"- omitted_path_allowlist: `{len(truncation.get('omitted_path_allowlist', []))}`",
+            "",
+            "### Checks",
+            *format_completeness_checks(completeness.get("checks", [])),
+            "",
+        ]
+    )
+    if unity_signals.get("unity_project_root"):
+        lines.extend(
+            [
+                "### Unity Runtime Structure",
+                f"- Project settings: `{len(unity_signals.get('project_settings', []))}`",
+                f"- Package manifests: `{len(unity_signals.get('package_manifests', []))}`",
+                f"- Scenes: `{len(unity_signals.get('scene_files', []))}`",
+                f"- `.asmdef` files: `{len(unity_signals.get('asmdef_files', []))}`",
+                f"- Unity C# scripts: `{len(unity_signals.get('unity_csharp_scripts', []))}`",
+                f"- Build/editor scripts: `{len(unity_signals.get('unity_build_scripts', []))}`",
+                "",
+            ]
+        )
+    lines.extend(
+        [
+            "## Roles",
+            *format_role_map(packet.get("roles", []), max_roles=12, max_paths=6),
+            "",
+            "## Structure",
+        ]
+    )
+    for label in ("build_files", "docs", "tests", "data_files", "source_files_sample"):
+        lines.extend([f"### {label}", *_markdown_list(structure.get(label, []), max_paths), ""])
+    reuse = structure.get("reuse_candidates", [])
+    lines.extend(["## Reuse Candidates"])
+    if isinstance(reuse, list) and reuse:
+        for item in reuse[:20]:
+            if isinstance(item, Mapping):
+                lines.append(f"- `{item.get('path')}` score=`{item.get('score')}` terms=`{', '.join(item.get('matched_terms', []))}`")
+            else:
+                lines.append(f"- `{item}`")
+    else:
+        lines.append("- none detected")
+    lines.extend(["", "## Review Focus"])
+    lines.extend(f"- {item}" for item in completeness.get("review_focus", []))
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def summarize_inventory(data: Mapping[str, Any]) -> str:
     """Return a human-readable summary for prompts and briefs."""
     return "\n".join([
@@ -907,6 +1773,32 @@ def save_context_pack(root: Path, data: Mapping[str, Any], *, max_chars: int = 1
     return path
 
 
+def save_project_structure_completeness(root: Path, data: Mapping[str, Any]) -> Dict[str, str]:
+    """Save the reusable project structure/completeness packet."""
+
+    directory = root / STATE_DIR
+    directory.mkdir(parents=True, exist_ok=True)
+    packet = build_project_structure_completeness(data)
+    json_path = directory / PROJECT_STRUCTURE_COMPLETENESS_JSON_FILE
+    md_path = directory / PROJECT_STRUCTURE_COMPLETENESS_MD_FILE
+    json_path.write_text(json.dumps(packet, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    md_path.write_text(build_project_structure_completeness_md(packet), encoding="utf-8")
+    return {"project_structure_json_path": str(json_path), "project_structure_md_path": str(md_path)}
+
+
+def save_release_critical_coverage_proof(root: Path, data: Mapping[str, Any]) -> Path:
+    """Save deterministic proof for truncated release-critical inventory coverage."""
+
+    directory = root / STATE_DIR
+    directory.mkdir(parents=True, exist_ok=True)
+    proof = data.get("release_critical_coverage_proof")
+    if not isinstance(proof, Mapping):
+        raise ValueError("inventory data missing release_critical_coverage_proof")
+    path = directory / RELEASE_CRITICAL_COVERAGE_PROOF_FILE
+    path.write_text(json.dumps(proof, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
 def save_context_cache(root: Path, data: Mapping[str, Any], *, inventory_path: Path, pack_path: Path | None = None) -> Path:
     """Save cache metadata used to reuse inventory and context packs safely."""
 
@@ -919,6 +1811,8 @@ def save_context_cache(root: Path, data: Mapping[str, Any], *, inventory_path: P
         "fingerprint": data.get("fingerprint", {}),
         "inventory_path": str(inventory_path),
         "context_pack_path": str(pack_path) if pack_path else None,
+        "project_structure_json_path": str(root / STATE_DIR / PROJECT_STRUCTURE_COMPLETENESS_JSON_FILE),
+        "project_structure_md_path": str(root / STATE_DIR / PROJECT_STRUCTURE_COMPLETENESS_MD_FILE),
         "semantic_index_path": str(root / STATE_DIR / CONTEXT_SEMANTIC_INDEX_FILE),
         "semantic_index_summary": data.get("semantic_index_summary", {}),
         "scanned_file_count": data.get("scanned_file_count"),
@@ -1033,6 +1927,7 @@ def build_bootstrap_block(root: Path, *, context_script: str | None = None) -> s
         "Before planning or editing in this repository:",
         f"- Run `python {script} --root . --sync --summary` when `.codex/review-driven-development/context-pack.md` is missing or stale.",
         "- Read `.codex/review-driven-development/context-pack.md` before opening broad source trees.",
+        "- Read `.codex/review-driven-development/project-structure-completeness.md` for current file structure, responsibility roles, and completion heuristics.",
         f"- Run `python {script} --root . --sync --semantic-search \"<query>\"` to rank likely files before broad search.",
         "- Use `.codex/review-driven-development/context-semantic-index.json` for file, symbol, term, and optional dense-vector lookup.",
         "- Use the `Role map` section in `context-pack.md` before opening source trees; it lists responsibility boundaries and query hints.",
@@ -1101,12 +1996,24 @@ def sync_context(
         pack_path = root / STATE_DIR / CONTEXT_PACK_FILE
         if write_pack:
             pack_path = save_context_pack(root, cached, max_chars=max_pack_chars)
+        if "release_critical_coverage_proof" not in cached:
+            refreshed = build_inventory(root, max_files=max_files, include_snippets=include_snippets, mode=mode)
+            cached["scan_truncated"] = refreshed.get("scan_truncated")
+            cached["truncation"] = refreshed.get("truncation")
+            cached["release_scan_coverage"] = refreshed.get("release_scan_coverage")
+            cached["scanned_file_count"] = refreshed.get("scanned_file_count")
+            cached["release_critical_coverage_proof"] = refreshed.get("release_critical_coverage_proof")
+            save_inventory(root, cached)
+        proof_path = save_release_critical_coverage_proof(root, cached)
+        structure_paths = save_project_structure_completeness(root, cached)
         save_context_cache(root, cached, inventory_path=root / STATE_DIR / CONTEXT_INVENTORY_FILE, pack_path=pack_path if write_pack else None)
         return {
             "cache_hit": True,
             "context_inventory": cached,
             "inventory_path": str(root / STATE_DIR / CONTEXT_INVENTORY_FILE),
             "context_pack_path": str(pack_path) if write_pack else None,
+            "release_critical_coverage_proof_path": str(proof_path),
+            **structure_paths,
             "cache_path": str(root / STATE_DIR / CONTEXT_CACHE_FILE),
             "semantic_index_path": str(semantic_path) if write_semantic_index else None,
         }
@@ -1119,12 +2026,16 @@ def sync_context(
         semantic_path = save_semantic_index(root, semantic_index)
     inventory_path = save_inventory(root, data)
     pack_path = save_context_pack(root, data, max_chars=max_pack_chars) if write_pack else None
+    proof_path = save_release_critical_coverage_proof(root, data)
+    structure_paths = save_project_structure_completeness(root, data)
     cache_path = save_context_cache(root, data, inventory_path=inventory_path, pack_path=pack_path)
     return {
         "cache_hit": False,
         "context_inventory": data,
         "inventory_path": str(inventory_path),
         "context_pack_path": str(pack_path) if pack_path else None,
+        "release_critical_coverage_proof_path": str(proof_path),
+        **structure_paths,
         "cache_path": str(cache_path),
         "semantic_index_path": str(semantic_path) if semantic_path else None,
     }
@@ -1150,6 +2061,7 @@ def main() -> None:
     parser.add_argument("--semantic-summary", action="store_true", help="Print compact semantic locator index metadata")
     parser.add_argument("--semantic-search", help="Rank likely files for this query using the semantic index")
     parser.add_argument("--role-map", action="store_true", help="Print compact file responsibility map")
+    parser.add_argument("--structure-completeness", action="store_true", help="Print project structure, role, and completeness Markdown")
     parser.add_argument("--top-k", type=int, default=8)
     parser.add_argument("--force-lexical", action="store_true", help="Force lexical fallback ranking for semantic search")
     parser.add_argument("--force-tfidf", action="store_true", help="Skip embedding ranking and force TF-IDF when available")
@@ -1177,6 +2089,9 @@ def main() -> None:
             print(json.dumps(search_semantic_index(args.semantic_search, load_semantic_index(root) or {}, top_k=args.top_k, force_fallback=args.force_lexical, force_tfidf=args.force_tfidf, force_lexical=args.force_lexical, embedding_model=args.embedding_model), ensure_ascii=False, indent=2))
         elif args.role_map:
             print(json.dumps(result["context_inventory"].get("role_map", []), ensure_ascii=False, indent=2))
+        elif args.structure_completeness:
+            path = Path(str(result.get("project_structure_md_path") or root / STATE_DIR / PROJECT_STRUCTURE_COMPLETENESS_MD_FILE))
+            print(path.read_text(encoding="utf-8") if path.exists() else "")
         elif args.overview:
             print(load_context_pack(root) or summarize_inventory(result["context_inventory"]))
         elif args.summary:
@@ -1195,6 +2110,8 @@ def main() -> None:
         data = dict(data)
         inventory_path = save_inventory(root, data) if args.save else root / STATE_DIR / CONTEXT_INVENTORY_FILE
         data["saved_to"] = str(inventory_path)
+        data["release_critical_coverage_proof_path"] = str(save_release_critical_coverage_proof(root, data))
+        data.update(save_project_structure_completeness(root, data))
         if args.pack:
             data["context_pack_path"] = str(save_context_pack(root, data, max_chars=args.max_pack_chars))
             data["cache_path"] = str(save_context_cache(root, data, inventory_path=inventory_path, pack_path=Path(data["context_pack_path"])))
@@ -1202,6 +2119,9 @@ def main() -> None:
         print(build_context_pack(data, max_chars=args.max_pack_chars))
     elif args.role_map:
         print(json.dumps(data.get("role_map", []), ensure_ascii=False, indent=2))
+    elif args.structure_completeness:
+        packet = build_project_structure_completeness(data)
+        print(build_project_structure_completeness_md(packet))
     else:
         print(summarize_inventory(data) if args.summary else json.dumps(data, ensure_ascii=False, indent=2))
 

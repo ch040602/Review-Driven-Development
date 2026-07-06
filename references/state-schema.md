@@ -1,4 +1,4 @@
-# State schema / 영구 상태 schema
+# State schema
 
 All state lives under:
 
@@ -20,11 +20,15 @@ All state lives under:
 | `commands.json` | JSON | test/lint/build/eval command groups |
 | `minimality_packet.json` | JSON | Current minimal solution ladder decision |
 | `rdd-debt.jsonl` | JSONL | Append-only deferred simplification candidates |
+| `todo_archive/` | Directory | Completed TODO event-history archives and manifests |
 | `context-inventory.json` | JSON | Last project context inventory |
 | `context-cache.json` | JSON | Fingerprint metadata for safe inventory/context-pack reuse |
 | `context-pack.md` | Markdown | Compact Codex-first project context summary |
 | `context-semantic-index.json` | JSON | Bounded lexical/symbol locator index for targeted file lookup |
+| `project-structure-completeness.md` | Markdown | Durable current folder structure, inferred roles, completeness checks, gaps, and review focus |
+| `project-structure-completeness.json` | JSON | Machine-readable companion for Pro review and automation |
 | `AGENTS.md` marker block | Markdown | Optional repo-local fast-context bootstrap instructions |
+| `pro-review/` | Directory | Optional ChatGPT Pro review packets, raw responses, extracted TODO candidates, and import evidence |
 
 ## TODO event
 
@@ -178,3 +182,64 @@ Consumers should prefer `event`, `created_at`, `evidence`, `review_refs`, and `d
 ```
 
 The semantic index is a locator only. It narrows which files Codex should open; it does not replace source inspection. Default ranking uses `scikit-learn` TF-IDF when installed, then lexical overlap. Dense `sentence-transformers` ranking is available only when vectors were built with explicit `--embeddings`.
+
+## Project structure completeness
+
+`project-structure-completeness.md` and `project-structure-completeness.json` are refreshed by every RDD context sync. They summarize:
+
+- current folder structure by build/docs/tests/data/source categories
+- inferred responsibility roles from the role map
+- reuse candidates
+- heuristic completeness score and missing checks
+- review focus for Codex and ChatGPT Pro feedback
+
+The score is a triage heuristic only; it does not prove production readiness. Pro review packets should attach the Markdown file when present and include the JSON-derived score in `context.md`/`context.yaml`.
+
+## Pro review round
+
+```text
+pro-review/<timestamp>-round-001/context.md
+pro-review/<timestamp>-round-001/context.yaml
+pro-review/<timestamp>-round-001/prompt.md
+pro-review/<timestamp>-round-001/agbrowse-result.json
+pro-review/<timestamp>-round-001/response.md
+pro-review/<timestamp>-round-001/todo-candidates.json
+```
+
+`todo-candidates.json` should contain:
+
+```json
+{
+  "summary": "",
+  "todos": [
+    {
+      "title": "",
+      "rationale": "",
+      "risk": "blocker | high | medium | low",
+      "acceptance_criteria": [],
+      "expected_files": [],
+      "source_refs": []
+    }
+  ]
+}
+```
+
+Archived completed TODOs keep a compact active-ledger stub:
+
+```json
+{
+  "schema_version": 1,
+  "created_at": "2026-06-03T00:00:00+00:00",
+  "event": "archive_stub",
+  "todo_id": "RDD-T-00000000",
+  "status": "completed",
+  "title": "Completed TODO title",
+  "archived": true,
+  "archive_path": ".codex/review-driven-development/todo_archive/completed-20260603T000000Z.jsonl",
+  "archived_event_count": 5,
+  "completion_created_at": "2026-06-03T00:00:00+00:00"
+}
+```
+
+Consumers should treat `archive_stub` as terminal completed state and open the
+archive file only when detailed historical evidence is needed.

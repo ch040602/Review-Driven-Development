@@ -1,56 +1,54 @@
 # Codex completion and skill registration guide
 
-## 목적
+This document defines how to complete the `review-driven-development` skill draft with Codex and register it in a target repository.
 
-이 문서는 `review-driven-development` skill 초안을 Codex로 완성하고, 대상 repository에 skill로 등록하는 절차를 정의합니다.
+## 1. Verify external skill links
 
-## 1. 외부 skill 링크 확인
-
-먼저 다음 파일을 열어 외부 skill 링크와 trust tier를 확인합니다.
+Open this file first:
 
 ```text
 skills/review-driven-development/references/external-skill-links.md
 ```
 
-우선순위:
+Priority:
 
 1. Official OpenAI docs/skills
-2. 이미 로컬에 설치된 user inventory skill
-3. 검토 완료된 community skill
+2. User-installed local `inventory` skill
+3. Reviewed community skill
 4. Fallback reference workflow
 
-Community skill을 사용할 때는 반드시 다음을 확인합니다.
+Before using a community skill, confirm:
 
 ```text
 SKILL.md
 scripts/
 hooks/
 required binaries
-network/file mutation behavior
+network and file-mutation behavior
 ```
 
-## 2. Codex로 helper 구현 검토/확장
+## 2. Review or extend helper implementation in Codex
 
-대상 repository 또는 이 draft repository에서 Codex에게 다음처럼 지시합니다.
+In the target repository (or this draft repository), instruct Codex as follows:
 
-### Korean prompt
+### English prompt
 
 ```text
-$review-driven-development를 사용해 이 skill 자체를 완성해.
+Use $review-driven-development to complete this skill draft.
 
-범위:
-- scripts/*.py의 helper contract를 기준으로 필요한 확장 지점을 구현
-- 함수명과 state schema는 유지
-- 외부 skill 링크는 references/external-skill-links.md 기준으로 유지
-- subagent는 토론/검증/개선 단계에서 critical-only로 유지
-- TODO는 정확히 하나만 in_progress 가능
-- 한 TODO 완료 시 test-driven-development 검증, independent validation, documentation, improvement critique를 모두 기록
-- README.md의 영/한 구조 유지
+Scope:
+- Implement required helper extension points in scripts/*.py based on documented contracts
+- Preserve function names and state schemas
+- Keep external skill links aligned with references/external-skill-links.md
+- Keep subagents critical-only during debate, validation, and improvement phases
+- Allow exactly one `in_progress` TODO at a time
+- For each completed TODO, record TDD validation, independent validation, documentation updates, and improvement critique
+- Preserve README and workflow policies
 
-완료 조건:
-- python -m compileall scripts 통과
-- scripts/validate_skill.py 통과
-- references/script-contracts.md와 구현 불일치 없음
+Completion criteria:
+- python -m compileall scripts passes
+- scripts/validate_skill.py passes
+- implementation matches references/script-contracts.md
 ```
 
 ### English prompt
@@ -59,13 +57,13 @@ $review-driven-development를 사용해 이 skill 자체를 완성해.
 Use $review-driven-development to complete this skill draft.
 
 Scope:
-- Implement required helper extension points in scripts/*.py according to the documented contracts
+- Implement required helper extension points in scripts/*.py according to documented contracts
 - Preserve function names and state schemas
 - Preserve external skill links from references/external-skill-links.md
 - Keep subagents critical-only during debate, validation, review, and improvement phases
 - Enforce exactly one in_progress TODO
 - After each TODO, record TDD validation, independent validation, documentation, and improvement critique
-- Preserve the bilingual README.md structure
+- Keep README workflow contracts consistent
 
 Completion criteria:
 - python -m compileall scripts passes
@@ -105,7 +103,7 @@ Use $review-driven-development for this requirement.
 
 ## 5. User-scoped registration
 
-When a user-wide installation is preferred, copy the skill into the Codex user skill location configured for the environment. If the environment follows Codex defaults, repository-scoped `.agents/skills/` is safer for project-specific workflows because it travels with the repo.
+When user-wide installation is preferred, copy the skill into the Codex user skill location configured for the environment. If the environment follows Codex defaults, repository-scoped `.agents/skills/` is safer for project-specific workflows because it travels with the repository.
 
 ## 6. First run checklist
 
@@ -136,7 +134,6 @@ After registration or completion, append this to `implementation-log.md`:
 - known limitations
 - next TODO
 ```
-
 
 ## Required behavioral validation
 

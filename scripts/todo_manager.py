@@ -28,6 +28,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 STATE_DIR = Path(".codex") / "review-driven-development"
 TODOS_FILE = "todos.jsonl"
+TODO_ARCHIVE_DIR = "todo_archive"
 VALID_STATUSES = {"pending", "in_progress", "blocked", "completed", "deferred"}
 VALID_RISKS = {"low", "medium", "high", "blocker"}
 REQUIRED_TODO_FIELDS = {
@@ -41,6 +42,11 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
+def utc_stamp() -> str:
+    """Return a compact UTC timestamp for archive filenames."""
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
 def todos_path(root: Path) -> Path:
     """Return TODO ledger path, creating the parent directory."""
     directory = root / STATE_DIR
@@ -48,6 +54,13 @@ def todos_path(root: Path) -> Path:
     path = directory / TODOS_FILE
     path.touch(exist_ok=True)
     return path
+
+
+def todo_archive_dir(root: Path) -> Path:
+    """Return completed TODO archive directory, creating it if needed."""
+    directory = root / STATE_DIR / TODO_ARCHIVE_DIR
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
 
 
 def read_events(root: Path) -> List[Dict[str, Any]]:
@@ -79,8 +92,14 @@ def current_state(events: Iterable[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]
     """Materialize current TODO state from ledger events."""
     state: Dict[str, Dict[str, Any]] = {}
     for event in events:
-        todo_id = event["todo_id"]
-        state[todo_id] = deep_merge(state.get(todo_id, {}), event)
+        todo_id = event.get("todo_id") or event.get("id")
+        if not todo_id:
+            raise KeyError("TODO event is missing both 'todo_id' and legacy 'id'")
+        normalized = dict(event)
+        normalized.setdefault("todo_id", todo_id)
+        if "acceptance_criteria" not in normalized and "acceptance" in normalized:
+            normalized["acceptance_criteria"] = normalized["acceptance"]
+        state[todo_id] = deep_merge(state.get(todo_id, {}), normalized)
     return state
 
 
@@ -261,7 +280,13 @@ def start_next_todo(root: Path) -> Dict[str, Any] | None:
 def add_validation_evidence(root: Path, todo_id: str, evidence: str, *, command: str | None = None, metadata: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
     """Append validation evidence to a TODO."""
     current = get_todo(root, todo_id)
-    validation = dict(current.get("validation", {}))
+    raw_validation = current.get("validation", {})
+    if isinstance(raw_validation, Mapping):
+        validation = dict(raw_validation)
+    elif isinstance(raw_validation, list):
+        validation = {"commands": [str(item) for item in raw_validation], "evidence": []}
+    else:
+        validation = {"commands": [], "evidence": []}
     evidence_list = list(validation.get("evidence", []))
     evidence_list.append(evidence)
     validation["evidence"] = evidence_list
@@ -413,6 +438,102 @@ def complete_todo_if_ready(root: Path, todo_id: str, note: str = "") -> Dict[str
     return set_status(root, todo_id, "completed", note or "Acceptance, validation, review, and documentation gates satisfied.")
 
 
+def archive_completed_todos(root: Path, *, keep_latest: int = 0, dry_run: bool = False) -> Dict[str, Any]:
+    """Move completed TODO event history to an archive and keep compact stubs.
+
+    The active ledger stays dependency-safe because every archived TODO keeps a
+    small `archive_stub` event with `status: completed`. Full validation/review
+    history remains in `todo_archive/` for audit when needed.
+    """
+
+    if keep_latest < 0:
+        raise ValueError("keep_latest must be >= 0")
+
+    path = todos_path(root)
+    events = read_events(root)
+    state = current_state(events)
+    completed_ids = [
+        todo_id
+        for todo_id, todo in sorted(
+            state.items(),
+            key=lambda item: str(item[1].get("created_at") or item[1].get("timestamp") or item[0]),
+        )
+        if todo.get("status") == "completed" and not todo.get("archived")
+    ]
+    if keep_latest:
+        archive_ids = set(completed_ids[:-keep_latest])
+    else:
+        archive_ids = set(completed_ids)
+
+    archive_events = [event for event in events if (event.get("todo_id") or event.get("id")) in archive_ids]
+    active_events = [event for event in events if (event.get("todo_id") or event.get("id")) not in archive_ids]
+    archive_path = root / STATE_DIR / TODO_ARCHIVE_DIR / f"completed-{utc_stamp()}.jsonl"
+    manifest_path = archive_path.with_suffix(".manifest.json")
+
+    stubs: List[Dict[str, Any]] = []
+    for todo_id in sorted(archive_ids):
+        todo = state[todo_id]
+        todo_events = [event for event in archive_events if (event.get("todo_id") or event.get("id")) == todo_id]
+        completion_events = [event for event in todo_events if event.get("status") == "completed"]
+        completion_created_at = ""
+        if completion_events:
+            completion_created_at = str(completion_events[-1].get("created_at") or completion_events[-1].get("timestamp") or "")
+        stub_created_at = now_iso()
+        stubs.append({
+            "schema_version": 1,
+            "event_id": str(uuid.uuid4()),
+            "created_at": stub_created_at,
+            "timestamp": stub_created_at,
+            "event": "archive_stub",
+            "event_type": "archive_stub",
+            "todo_id": todo_id,
+            "status": "completed",
+            "title": todo.get("title", ""),
+            "risk": todo.get("risk", "medium"),
+            "dependencies": todo.get("dependencies", []),
+            "acceptance_criteria": todo.get("acceptance_criteria", []),
+            "archived": True,
+            "archive_path": str(archive_path.relative_to(root)),
+            "archived_event_count": len(todo_events),
+            "completion_created_at": completion_created_at,
+        })
+
+    result = {
+        "archived_todo_count": len(archive_ids),
+        "archived_event_count": len(archive_events),
+        "active_event_count_before": len(events),
+        "active_event_count_after": len(active_events) + len(stubs),
+        "archive_path": str(archive_path),
+        "manifest_path": str(manifest_path),
+        "dry_run": dry_run,
+    }
+    if dry_run or not archive_ids:
+        return result
+
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+    with archive_path.open("w", encoding="utf-8") as handle:
+        for event in archive_events:
+            handle.write(json.dumps(event, ensure_ascii=False) + "\n")
+    manifest = {
+        "schema_version": 1,
+        "created_at": now_iso(),
+        "source_ledger": str(path.relative_to(root)),
+        "archive_path": str(archive_path.relative_to(root)),
+        "archived_todo_ids": sorted(archive_ids),
+        "archived_event_count": len(archive_events),
+        "active_event_count_before": len(events),
+        "active_event_count_after": len(active_events) + len(stubs),
+        "stub_policy": "keep completed archive_stub records in active ledger for dependency checks",
+    }
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    with path.open("w", encoding="utf-8") as handle:
+        for event in active_events:
+            handle.write(json.dumps(event, ensure_ascii=False) + "\n")
+        for stub in stubs:
+            handle.write(json.dumps(stub, ensure_ascii=False) + "\n")
+    return result
+
+
 def update_from_improvement_critique(root: Path, findings: Iterable[Mapping[str, Any]]) -> List[Dict[str, Any]]:
     """Create follow-up TODOs from accepted improvement critique findings."""
     return create_todos_from_findings(root, findings)
@@ -455,6 +576,9 @@ def main() -> None:
     complete_parser = subparsers.add_parser("complete")
     complete_parser.add_argument("todo_id")
     complete_parser.add_argument("--note", default="")
+    archive_parser = subparsers.add_parser("archive-completed")
+    archive_parser.add_argument("--keep-latest", type=int, default=0, help="Keep the latest N completed TODO histories in todos.jsonl")
+    archive_parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     root = Path(args.root).resolve()
     if args.command == "create":
@@ -479,6 +603,8 @@ def main() -> None:
         print(json.dumps(update_documentation_status(root, args.todo_id, args.status, targets=args.target, note=args.note), ensure_ascii=False, indent=2))
     elif args.command == "complete":
         print(json.dumps(complete_todo_if_ready(root, args.todo_id, args.note), ensure_ascii=False, indent=2))
+    elif args.command == "archive-completed":
+        print(json.dumps(archive_completed_todos(root, keep_latest=args.keep_latest, dry_run=args.dry_run), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

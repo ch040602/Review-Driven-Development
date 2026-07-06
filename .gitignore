@@ -12,3 +12,4 @@ __pycache__/
 !.codex/hooks.json
 
 .pytest_cache/
+.pytest_tmp/

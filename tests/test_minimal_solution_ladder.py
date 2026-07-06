@@ -5,7 +5,8 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS_DIR = REPO_ROOT / "skills" / "review-driven-development" / "scripts"
+SKILL_DIR = REPO_ROOT if (REPO_ROOT / "SKILL.md").exists() else REPO_ROOT / "skills" / "review-driven-development"
+SCRIPTS_DIR = SKILL_DIR / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from minimal_solution_ladder import build_minimality_packet, save_minimality_packet  # noqa: E402

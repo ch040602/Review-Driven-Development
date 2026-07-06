@@ -101,7 +101,10 @@ def main() -> None:
     parser.add_argument("--validate-only", action="store_true")
     args = parser.parse_args()
     repo_root = Path(args.repo_root).resolve()
-    skill_dir = (repo_root / args.skill_dir).resolve() if not Path(args.skill_dir).is_absolute() else Path(args.skill_dir).resolve()
+    if args.skill_dir == "skills/review-driven-development" and (repo_root / "SKILL.md").exists():
+        skill_dir = repo_root
+    else:
+        skill_dir = (repo_root / args.skill_dir).resolve() if not Path(args.skill_dir).is_absolute() else Path(args.skill_dir).resolve()
     errors = validate_skill_folder(skill_dir)
     if errors:
         for error in errors:

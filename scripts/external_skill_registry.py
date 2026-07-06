@@ -142,11 +142,11 @@ EXTERNAL_SKILLS: List[ExternalSkill] = [
     ExternalSkill(
         name="agentic-rag",
         provider="ch040602",
-        url="https://github.com/ch040602/Agentic-RAG-Skill",
+        url="C:/Users/hcslab_523/.codex/skills/agentic-rag",
         required=False,
         phase="companion-rag",
         purpose="Optional companion skill for Agentic RAG, cross-corpus retrieval, context sufficiency, query rewriting, and grounded synthesis TODOs inside RDD workflows.",
-        install_hint="Install or copy the reviewed .agents/skills/agentic-rag directory from https://github.com/ch040602/Agentic-RAG-Skill.",
+        install_hint="Use the local installed Codex skill at C:/Users/hcslab_523/.codex/skills/agentic-rag.",
     ),
     ExternalSkill(
         name="using-agent-skills",

@@ -21,6 +21,7 @@ STATE_DIR = Path(".codex") / SKILL_NAME
 PROFILE_FILE = "profile.md"
 DEFAULTS_FILE = "defaults.json"
 TODOS_FILE = "todos.jsonl"
+TODO_ARCHIVE_DIR = "todo_archive"
 CRITIC_FINDINGS_FILE = "critic-findings.jsonl"
 DECISION_LOG_FILE = "decision-log.md"
 REVIEW_LEDGER_FILE = "review-ledger.md"

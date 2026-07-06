@@ -4,7 +4,8 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS_DIR = REPO_ROOT / "skills" / "review-driven-development" / "scripts"
+SKILL_DIR = REPO_ROOT if (REPO_ROOT / "SKILL.md").exists() else REPO_ROOT / "skills" / "review-driven-development"
+SCRIPTS_DIR = SKILL_DIR / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from dependency_guard import build_dependency_report, dependency_names_from_pyproject  # noqa: E402

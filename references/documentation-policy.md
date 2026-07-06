@@ -1,4 +1,4 @@
-# Documentation policy / 문서화 정책
+# Documentation policy
 
 Completed TODOs must update documentation before being marked complete.
 

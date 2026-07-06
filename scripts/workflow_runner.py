@@ -17,6 +17,7 @@ try:
     from .critic_ledger import accepted_findings, findings_to_todo_seeds
     from .doc_sync_check import build_doc_sync_report, save_report as save_doc_report
     from .quality_gate import build_report, load_commands, save_report, select_commands
+    from .pro_review import run_review as run_pro_review_loop
     from .rdd_state import ensure_state, load_defaults
     from .requirement_analyzer import create_requirement_packet, packet_to_dict
     from .subagent_brief_builder import allocation_table_for_roles, write_briefs, write_spawn_plan
@@ -26,6 +27,7 @@ except ImportError:  # pragma: no cover
     from critic_ledger import accepted_findings, findings_to_todo_seeds  # type: ignore
     from doc_sync_check import build_doc_sync_report, save_report as save_doc_report  # type: ignore
     from quality_gate import build_report, load_commands, save_report, select_commands  # type: ignore
+    from pro_review import run_review as run_pro_review_loop  # type: ignore
     from rdd_state import ensure_state, load_defaults  # type: ignore
     from requirement_analyzer import create_requirement_packet, packet_to_dict  # type: ignore
     from subagent_brief_builder import allocation_table_for_roles, write_briefs, write_spawn_plan  # type: ignore
@@ -58,6 +60,8 @@ def run_context_phase(
         "context_inventory": context,
         "inventory_path": sync["inventory_path"],
         "context_pack_path": sync["context_pack_path"],
+        "project_structure_md_path": sync.get("project_structure_md_path"),
+        "project_structure_json_path": sync.get("project_structure_json_path"),
         "cache_path": sync["cache_path"],
         "requirement_packet": packet_to_dict(packet),
     }
@@ -89,9 +93,11 @@ def run_sync_phase(
         "cache_hit": sync["cache_hit"],
         "inventory_path": sync["inventory_path"],
         "context_pack_path": sync["context_pack_path"],
+        "project_structure_md_path": sync.get("project_structure_md_path"),
+        "project_structure_json_path": sync.get("project_structure_json_path"),
         "cache_path": sync["cache_path"],
         "summary": summarize_inventory(inventory),
-        "main_agent_next": "Open context-pack.md first; open full source files only when the pack points to them.",
+        "main_agent_next": "Open context-pack.md and project-structure-completeness.md first; open full source files only when those packets point to them.",
     }
 
 
@@ -113,6 +119,28 @@ def run_overview_phase(
         "cache_hit": sync["cache_hit"],
         "context_pack_path": sync["context_pack_path"],
         "context_pack": pack,
+    }
+
+
+def run_structure_completeness_phase(
+    root: Path,
+    *,
+    inventory_mode: str = "standard",
+    include_snippets: bool = False,
+    enable_embeddings: bool = False,
+    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2",
+) -> Dict[str, object]:
+    """Return the current project structure, role, and completeness Markdown."""
+
+    ensure_state(root)
+    sync = sync_context(root, mode=inventory_mode, include_snippets=include_snippets, enable_embeddings=enable_embeddings, embedding_model=embedding_model)
+    path = Path(str(sync.get("project_structure_md_path")))
+    return {
+        "phase": "structure-completeness",
+        "cache_hit": sync["cache_hit"],
+        "project_structure_md_path": str(path),
+        "project_structure_json_path": sync.get("project_structure_json_path"),
+        "project_structure_completeness": path.read_text(encoding="utf-8") if path.exists() else "",
     }
 
 
@@ -228,6 +256,7 @@ def run_commands_phase(root: Path, todo_id: Optional[str] = None) -> Dict[str, o
             "python skills/review-driven-development/scripts/context_inventory.py --root . --sync --semantic-summary",
             "python skills/review-driven-development/scripts/context_inventory.py --root . --sync --semantic-search \"<query>\"",
             "python skills/review-driven-development/scripts/context_inventory.py --root . --sync --role-map",
+            "python skills/review-driven-development/scripts/context_inventory.py --root . --sync --structure-completeness",
             "python skills/review-driven-development/scripts/context_inventory.py --root . --sync --semantic-search \"<query>\" --force-tfidf",
             "python skills/review-driven-development/scripts/context_inventory.py --root . --sync --semantic-search \"<query>\" --force-lexical",
             "python skills/review-driven-development/scripts/context_inventory.py --root . --sync --bootstrap",
@@ -235,6 +264,7 @@ def run_commands_phase(root: Path, todo_id: Optional[str] = None) -> Dict[str, o
             "python skills/review-driven-development/scripts/workflow_runner.py --root . --phase semantic-index",
             "python skills/review-driven-development/scripts/workflow_runner.py --root . --phase semantic-search --query \"<query>\"",
             "python skills/review-driven-development/scripts/workflow_runner.py --root . --phase role-map",
+            "python skills/review-driven-development/scripts/workflow_runner.py --root . --phase structure-completeness",
             "python skills/review-driven-development/scripts/workflow_runner.py --root . --phase bootstrap",
         ],
         "workflow": [
@@ -242,6 +272,8 @@ def run_commands_phase(root: Path, todo_id: Optional[str] = None) -> Dict[str, o
             "python skills/review-driven-development/scripts/workflow_runner.py --root . --phase once --prompt \"<requirement>\"",
             "python skills/review-driven-development/scripts/workflow_runner.py --root . --phase validation --todo-id <id> --agent-budget spark-first",
             "python skills/review-driven-development/scripts/workflow_runner.py --root . --phase spark-review --todo-id <id>",
+            "python skills/review-driven-development/scripts/workflow_runner.py --root . --phase pro-review --prompt \"<TODO replenishment request after backlog is terminal>\" --pro-review-no-add-todos",
+            "python skills/review-driven-development/scripts/workflow_runner.py --root . --phase pro-review --prompt \"<final TODO replenishment request>\" --pro-review-recursive",
             "python skills/review-driven-development/scripts/workflow_runner.py --root . --phase commands",
         ],
         "minimalism": [
@@ -453,6 +485,32 @@ def run_improvement_phase(
     }
 
 
+def run_pro_review_phase(
+    root: Path,
+    prompt: str,
+    *,
+    count: int = 1,
+    recursive: bool = False,
+    dry_run: bool = False,
+    add_todos: bool = True,
+    inventory_mode: str = "standard",
+    timeout: int = 3600,
+) -> Dict[str, object]:
+    """Ask ChatGPT Pro for external TODO feedback through agbrowse."""
+
+    ensure_state(root)
+    return run_pro_review_loop(
+        root,
+        prompt or "Review the current implementation and file structure. Return actionable TODO feedback.",
+        count=count,
+        recursive=recursive,
+        dry_run=dry_run,
+        add_todos=add_todos,
+        inventory_mode=inventory_mode,
+        timeout=timeout,
+    )
+
+
 def run_once(
     root: Path,
     prompt: str,
@@ -465,6 +523,12 @@ def run_once(
     agent_budget: str = "spark-first",
     enable_embeddings: bool = False,
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2",
+    pro_review: bool = False,
+    pro_review_recursive: bool = False,
+    pro_review_count: int = 1,
+    pro_review_dry_run: bool = False,
+    pro_review_add_todos: bool = True,
+    pro_review_timeout: int = 3600,
 ) -> Dict[str, object]:
     """Run one safe orchestration step.
 
@@ -496,6 +560,30 @@ def run_once(
         context_max_chars=context_max_chars,
         agent_budget=agent_budget,
     )
+    if pro_review and pro_review_recursive:
+        result["pro_review"] = {
+            "phase": "pro-review",
+            "recursive": True,
+            "deferred": True,
+            "executed_rounds": 0,
+            "requested_count": pro_review_count,
+            "reason": (
+                "Recursive ChatGPT Pro review is a final-only pass. Complete, block, "
+                "or defer the active RDD TODO backlog first, then run "
+                "`workflow_runner.py --phase pro-review --pro-review-recursive` once."
+            ),
+        }
+    elif pro_review:
+        result["pro_review"] = run_pro_review_phase(
+            root,
+            prompt,
+            count=pro_review_count,
+            recursive=pro_review_recursive,
+            dry_run=pro_review_dry_run,
+            add_todos=pro_review_add_todos,
+            inventory_mode=inventory_mode,
+            timeout=pro_review_timeout,
+        )
     result["todo_generation"] = run_todo_generation_phase(root)
     result["execution"] = run_execution_phase(root)
     active = result["execution"].get("active_todo") if isinstance(result["execution"], dict) else None
@@ -519,7 +607,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Preview review-driven-development orchestration.")
     parser.add_argument("--root", default=".")
     parser.add_argument("--prompt", default="")
-    parser.add_argument("--phase", choices=["once", "context", "sync", "overview", "semantic-index", "semantic-search", "role-map", "bootstrap", "commands", "first-run", "preplan", "todo-generation", "execution", "validation", "spark-review", "documentation", "improvement"], default="once")
+    parser.add_argument("--phase", choices=["once", "context", "sync", "overview", "semantic-index", "semantic-search", "role-map", "structure-completeness", "bootstrap", "commands", "first-run", "preplan", "todo-generation", "execution", "validation", "spark-review", "documentation", "improvement", "pro-review"], default="once")
     parser.add_argument("--todo-id")
     parser.add_argument("--query", default="")
     parser.add_argument("--top-k", type=int, default=8)
@@ -537,6 +625,12 @@ def main() -> None:
     parser.add_argument("--force-tfidf", action="store_true")
     parser.add_argument("--force-lexical", action="store_true")
     parser.add_argument("--bootstrap-target", default="AGENTS.md")
+    parser.add_argument("--pro-review", action="store_true", help="Run ChatGPT Pro TODO replenishment only after active TODOs are terminal")
+    parser.add_argument("--pro-review-recursive", action="store_true", help="Run a final-only one-shot Pro TODO replenishment import")
+    parser.add_argument("--pro-review-count", type=int, default=1, help="Compatibility option; recursive Pro review is limited to one live round")
+    parser.add_argument("--pro-review-dry-run", action="store_true", help="Build Pro review context files without calling agbrowse")
+    parser.add_argument("--pro-review-no-add-todos", action="store_true", help="Store Pro review candidates without appending TODOs")
+    parser.add_argument("--pro-review-timeout", type=int, default=3600, help="agbrowse Pro review timeout in seconds")
     args = parser.parse_args()
 
     root = Path(args.root).resolve()
@@ -553,6 +647,12 @@ def main() -> None:
             agent_budget=args.agent_budget,
             enable_embeddings=enable_embeddings,
             embedding_model=args.embedding_model,
+            pro_review=args.pro_review,
+            pro_review_recursive=args.pro_review_recursive,
+            pro_review_count=args.pro_review_count,
+            pro_review_dry_run=args.pro_review_dry_run,
+            pro_review_add_todos=not args.pro_review_no_add_todos,
+            pro_review_timeout=args.pro_review_timeout,
         )
     elif args.phase == "context":
         result = run_context_phase(root, args.prompt, inventory_mode=args.inventory_mode, include_snippets=args.include_snippets, enable_embeddings=enable_embeddings, embedding_model=args.embedding_model)
@@ -568,6 +668,8 @@ def main() -> None:
         result = run_semantic_search_phase(root, args.query, top_k=args.top_k, inventory_mode=args.inventory_mode, include_snippets=args.include_snippets, enable_embeddings=enable_embeddings, embedding_model=args.embedding_model, force_tfidf=args.force_tfidf, force_lexical=args.force_lexical)
     elif args.phase == "role-map":
         result = run_role_map_phase(root, inventory_mode=args.inventory_mode, include_snippets=args.include_snippets, enable_embeddings=enable_embeddings, embedding_model=args.embedding_model)
+    elif args.phase == "structure-completeness":
+        result = run_structure_completeness_phase(root, inventory_mode=args.inventory_mode, include_snippets=args.include_snippets, enable_embeddings=enable_embeddings, embedding_model=args.embedding_model)
     elif args.phase == "bootstrap":
         result = run_bootstrap_phase(root, target=args.bootstrap_target, force=args.force, inventory_mode=args.inventory_mode, include_snippets=args.include_snippets, enable_embeddings=enable_embeddings, embedding_model=args.embedding_model)
     elif args.phase == "commands":
@@ -596,6 +698,17 @@ def main() -> None:
         if not args.todo_id:
             raise SystemExit("--todo-id is required for improvement phase")
         result = run_improvement_phase(root, args.todo_id, args.prompt or "Review implementation quality, efficiency, accuracy, documentation, and maintainability after TODO implementation.", critic_depth=args.critic_depth, max_roles=args.max_roles, context_max_chars=args.context_max_chars, agent_budget=args.agent_budget)
+    elif args.phase == "pro-review":
+        result = run_pro_review_phase(
+            root,
+            args.prompt,
+            count=args.pro_review_count,
+            recursive=args.pro_review_recursive,
+            dry_run=args.pro_review_dry_run,
+            add_todos=not args.pro_review_no_add_todos,
+            inventory_mode=args.inventory_mode,
+            timeout=args.pro_review_timeout,
+        )
     else:  # pragma: no cover
         raise SystemExit(f"Unknown phase: {args.phase}")
     print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))

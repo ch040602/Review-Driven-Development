@@ -1,10 +1,10 @@
-# Python function contract / Python 함수 계약
+# Python function contract
 
 This file is generated from the current `scripts/*.py` files. It lists each public function/class and the implemented helper contract. Codex should preserve these public contracts when extending behavior.
 
-이 파일은 현재 `scripts/*.py`에서 추출한 함수/클래스 목록입니다. Codex는 공개 함수명을 유지하고 구현 세부사항을 확장해야 합니다.
+This file is derived from public functions/classes extracted from current `scripts/*.py`. Codex must preserve public function names and evolve implementation details within the documented contract.
 
-## Completion order / 구현 우선순위
+## Completion order
 
 1. `rdd_state.py` — first-run profile/defaults persistence
 2. `context_inventory.py` and `requirement_analyzer.py` — source/docs/data requirement understanding
@@ -16,7 +16,7 @@ This file is generated from the current `scripts/*.py` files. It lists each publ
 8. `workflow_runner.py` — optional orchestration preview; main Codex agent still owns judgment
 9. `self_test.py` and `tests/test_smoke_workflow.py` — behavioral smoke validation
 
-## Script index / 스크립트 색인
+## Script index
 
 | File | Main symbols | Role |
 |---|---|---|
@@ -293,7 +293,9 @@ TODO ledger helper for the review-driven-development skill.
 | Symbol | Type | Contract role |
 |---|---|---|
 | `now_iso` | function | Return a stable UTC timestamp. |
+| `utc_stamp` | function | Return a compact UTC timestamp for archive filenames. |
 | `todos_path` | function | Return TODO ledger path, creating the parent directory. |
+| `todo_archive_dir` | function | Return completed TODO archive directory, creating it if needed. |
 | `read_events` | function | Read append-only TODO events. |
 | `deep_merge` | function | Merge nested dictionaries while replacing non-dict values. |
 | `current_state` | function | Materialize current TODO state from ledger events. |
@@ -318,6 +320,7 @@ TODO ledger helper for the review-driven-development skill.
 | `has_configured_quality_commands` | function | Return True when any real quality-gate command is configured. |
 | `has_executed_passing_quality_gate` | function | Return True when TODO evidence includes an executed passing quality gate. |
 | `complete_todo_if_ready` | function | Mark a TODO completed only after all gates are satisfied. |
+| `archive_completed_todos` | function | Move completed TODO event history to an archive and keep compact stubs. |
 | `update_from_improvement_critique` | function | Create follow-up TODOs from accepted improvement critique findings. |
 | `main` | function | CLI entrypoint for TODO ledger operations. |
 
@@ -371,7 +374,7 @@ End-to-end standard-library smoke workflow validation.
 | `run_self_test` | function | Run a full non-destructive workflow smoke test and return evidence. |
 | `main` | function | CLI entrypoint. |
 
-## Required validation commands / 필수 검증 명령
+## Required validation commands
 
 ```bash
 python -m compileall skills/review-driven-development/scripts
@@ -383,7 +386,7 @@ python skills/review-driven-development/scripts/self_test.py
 pytest -q
 ```
 
-## Codex completion rules / Codex 구현 규칙
+## Codex completion rules
 
 1. Do not break function signatures without updating this file and `scripts/README.md`.
 2. Keep state files backward-compatible.

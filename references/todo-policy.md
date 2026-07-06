@@ -1,4 +1,4 @@
-# TODO policy / TODO 정책
+# TODO policy
 
 ## Statuses
 
@@ -21,6 +21,21 @@ deferred
    - documentation reference or explicit `not_needed` rationale
    - no unresolved blocker/high accepted finding
 5. Improvement findings after a TODO become new TODOs only if accepted by the main agent.
+
+## Completed TODO archival
+
+When `todos.jsonl` becomes noisy enough to slow context loading or trigger skill
+budget pressure, move completed TODO event history out of the active ledger:
+
+```bash
+python scripts/todo_manager.py --root . archive-completed
+```
+
+The command writes full completed TODO events to
+`.codex/review-driven-development/todo_archive/` and rewrites `todos.jsonl`
+with non-completed events plus compact `archive_stub` records for completed
+TODO IDs. The stubs must keep `status: completed` so dependency checks and
+terminal-backlog checks remain correct without reloading the full history.
 
 ## Recommended TODO shape
 
