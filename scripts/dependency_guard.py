@@ -9,6 +9,8 @@ import re
 from pathlib import Path
 from typing import Any, Dict, Mapping, Set
 
+from toml_compat import loads_toml
+
 DEPENDENCY_FILES = ["package.json", "pyproject.toml", "requirements.txt", "Cargo.toml", "go.mod", "pom.xml", "build.gradle"]
 BLOCKING_MINIMALITY_RUNGS = {"skip", "reuse_existing_code", "stdlib", "native", "installed_dep", "one_line"}
 
@@ -23,10 +25,8 @@ def normalize_dependency_name(spec: str) -> str:
 def dependency_names_from_pyproject(text: str) -> Set[str]:
     """Parse project dependencies from pyproject TOML."""
 
-    import tomllib
-
     names: Set[str] = set()
-    data = tomllib.loads(text or "")
+    data = loads_toml(text or "")
     for item in data.get("project", {}).get("dependencies", []) or []:
         name = normalize_dependency_name(str(item))
         if name:

@@ -3,15 +3,18 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-import tomllib
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS_DIR = REPO_ROOT / "scripts"
+sys.path.insert(0, str(SCRIPTS_DIR))
+
+from toml_compat import loads_toml  # noqa: E402
 
 
 def test_spark_agent_config_uses_codex_spark_read_only() -> None:
     path = REPO_ROOT / ".codex" / "agents" / "rdd-spark-critic.toml"
-    data = tomllib.loads(path.read_text(encoding="utf-8"))
+    data = loads_toml(path.read_text(encoding="utf-8"))
 
     assert data["name"] == "rdd_spark_critic"
     assert data["model"] == "gpt-5.3-codex-spark"

@@ -9,6 +9,8 @@ import re
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping
 
+from toml_compat import loads_toml
+
 STATE_DIR = Path(".codex") / "review-driven-development"
 RUNG_SKIP = "skip"
 RUNG_REUSE = "reuse_existing_code"
@@ -96,9 +98,7 @@ def installed_dependency_names(root: Path) -> List[str]:
     pyproject = root / "pyproject.toml"
     if pyproject.exists():
         try:
-            import tomllib
-
-            data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+            data = loads_toml(pyproject.read_text(encoding="utf-8"))
             for item in data.get("project", {}).get("dependencies", []) or []:
                 names.add(normalize_dependency_name(str(item)))
             for group in (data.get("project", {}).get("optional-dependencies", {}) or {}).values():
