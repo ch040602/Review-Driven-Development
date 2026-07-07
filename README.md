@@ -241,12 +241,16 @@ Complete the TODO only after gates are satisfied:
 python skills/review-driven-development/scripts/todo_manager.py --root . complete RDD-T-00000001
 ```
 
-When completed TODO history makes `todos.jsonl` too large for fast context
-loading, archive completed events and keep compact dependency-safe stubs:
+Completion archives full completed TODO history by default and leaves only a
+compact dependency-safe stub in `todos.jsonl`. For older ledgers or manual
+cleanup, run:
 
 ```bash
 python skills/review-driven-development/scripts/todo_manager.py --root . archive-completed
 ```
+
+The default TODO list omits completed stubs; use `list --include-completed`
+when auditing archived completions.
 
 ## How it works
 

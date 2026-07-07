@@ -341,7 +341,7 @@ Purpose: Manage TODO creation, state transitions, review findings, validation ev
 | `create_todo` | Create a pending TODO. |
 | `create_todos_from_findings` | Convert accepted critical findings into TODOs. |
 | `get_todo` | Return one TODO by ID. |
-| `list_todos` | Return materialized TODOs, optionally filtered by status. |
+| `list_todos` | Return materialized TODOs, optionally filtered by status or completed visibility. |
 | `set_status` | Set TODO status through an append-only event. |
 | `start_next_todo` | Start the first pending TODO whose dependencies are completed. |
 | `add_validation_evidence` | Append validation evidence to a TODO. |
@@ -352,7 +352,7 @@ Purpose: Manage TODO creation, state transitions, review findings, validation ev
 | `configured_quality_commands` | Return configured test/lint/build/eval commands from RDD state. |
 | `has_configured_quality_commands` | Return True when any real quality-gate command is configured. |
 | `has_executed_passing_quality_gate` | Return True when TODO evidence includes an executed passing quality gate. |
-| `complete_todo_if_ready` | Mark a TODO completed only after all gates are satisfied. |
+| `complete_todo_if_ready` | Mark a TODO completed only after all gates are satisfied; optionally archive completed history immediately. |
 | `archive_completed_todos` | Move completed TODO event history to `todo_archive/` and leave compact completed stubs in `todos.jsonl`. |
 | `update_from_improvement_critique` | Create follow-up TODOs from accepted improvement critique findings. |
 | `main` | CLI entrypoint; keep side effects explicit and bounded to the requested root/path. |

@@ -1,6 +1,6 @@
 ---
 name: review-driven-development
-description: RDD TODO loop: compact context, one-at-a-time execution, TDD validation, review/docs gates, until-complete, Pro replenishment, completed-TODO archive.
+description: RDD workflow for TODO planning, validation, review, docs, compact state, and completion loops.
 ---
 
 # review-driven-development
@@ -34,6 +34,7 @@ Additional operating goals:
 - Preserve an explicit `deep` path for high-risk work instead of silently weakening review quality.
 - Keep `minimalism_level` separate from `fast`/`standard`/`deep`; default to `full` and put long policy in `references/minimal-solution-policy.md`.
 - Keep skill discovery cheap: the frontmatter `description` must stay concise. Put workflow detail in this body and references, not in the description field that every Codex session preloads.
+- Keep active TODO state cheap: after each completed TODO, archive full completed history to `todo_archive/` and keep only dependency-safe stubs in `todos.jsonl`.
 
 ## Execution modes
 
@@ -87,7 +88,7 @@ Default mode is `one-todo`: execute exactly one accepted/actionable TODO, valida
 19. Every context sync must update `.codex/review-driven-development/project-structure-completeness.md` and `.codex/review-driven-development/project-structure-completeness.json` with the current folder structure, inferred file roles, and heuristic completeness status. Read the Markdown file before requesting Pro feedback.
 20. In `until-complete` mode, complete every locally actionable TODO before stopping. If a TODO cannot be executed now, record it in `todo_remain.jsonl` instead of leaving it as an unclassified pending item.
 21. For recursive ChatGPT Pro feedback on game-shipping projects, the Pro context must explicitly state the final product goal, current runtime target, and executable boundary. For `FLUX DERBY`, always state: final objective is a Steam-releaseable Unity 2D pixel-art game, not a console/WinForms app; local TODOs must be executable without Unity Editor, Steamworks, external downloads, credentials, rendered capture, or manual QA unless those dependencies are already available.
-22. When `todos.jsonl` grows enough to dominate context or skill-state reads, archive completed TODO event history with `todo_manager.py archive-completed`. The active ledger should retain only compact completed stubs so dependency checks still know archived TODOs are completed.
+22. Archive completed TODO event history by default. Prefer `todo_manager.py complete <id>` so completion immediately writes full history to `todo_archive/` and leaves only compact completed stubs in `todos.jsonl`; use `--keep-in-ledger` only for debugging.
 
 ## Rule-Based Subagent Triggers
 
@@ -124,7 +125,7 @@ Minimum files:
 ```text
 profile.md              # exact first-run answers and project assumptions
 defaults.json           # parsed defaults used when no new instruction is provided
-todos.jsonl             # append-only TODO lifecycle ledger
+todos.jsonl             # active TODO lifecycle ledger plus compact completed stubs
 critic-findings.jsonl   # append-only critical subagent findings
 decision-log.md         # accepted/rejected/deferred findings
 review-ledger.md        # review and validation summaries

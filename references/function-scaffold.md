@@ -319,7 +319,7 @@ TODO ledger helper for the review-driven-development skill.
 | `configured_quality_commands` | function | Return configured test/lint/build/eval commands from RDD state. |
 | `has_configured_quality_commands` | function | Return True when any real quality-gate command is configured. |
 | `has_executed_passing_quality_gate` | function | Return True when TODO evidence includes an executed passing quality gate. |
-| `complete_todo_if_ready` | function | Mark a TODO completed only after all gates are satisfied. |
+| `complete_todo_if_ready` | function | Mark a TODO completed only after all gates are satisfied; optionally archive completed history immediately. |
 | `archive_completed_todos` | function | Move completed TODO event history to an archive and keep compact stubs. |
 | `update_from_improvement_critique` | function | Create follow-up TODOs from accepted improvement critique findings. |
 | `main` | function | CLI entrypoint for TODO ledger operations. |

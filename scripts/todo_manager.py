@@ -244,11 +244,13 @@ def get_todo(root: Path, todo_id: str) -> Dict[str, Any]:
     return state[todo_id]
 
 
-def list_todos(root: Path, status: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
-    """Return materialized TODOs, optionally filtered by status."""
+def list_todos(root: Path, status: Optional[str] = None, *, include_completed: bool = True) -> Dict[str, Dict[str, Any]]:
+    """Return materialized TODOs, optionally filtering terminal completions."""
     state = current_state(read_events(root))
     if status is None:
-        return state
+        if include_completed:
+            return state
+        return {todo_id: todo for todo_id, todo in state.items() if todo.get("status") != "completed"}
     validate_status(status)
     return {todo_id: todo for todo_id, todo in state.items() if todo.get("status") == status}
 
@@ -427,7 +429,7 @@ def has_executed_passing_quality_gate(todo: Mapping[str, Any]) -> bool:
     return False
 
 
-def complete_todo_if_ready(root: Path, todo_id: str, note: str = "") -> Dict[str, Any]:
+def complete_todo_if_ready(root: Path, todo_id: str, note: str = "", *, archive_on_complete: bool = False) -> Dict[str, Any]:
     """Mark a TODO completed only after all gates are satisfied."""
     todo = get_todo(root, todo_id)
     blockers = completion_blockers(todo)
@@ -435,7 +437,10 @@ def complete_todo_if_ready(root: Path, todo_id: str, note: str = "") -> Dict[str
         blockers.append("configured quality-gate commands require executed passing quality_gate evidence")
     if blockers:
         raise RuntimeError(f"TODO {todo_id} is not ready for completion: {blockers}")
-    return set_status(root, todo_id, "completed", note or "Acceptance, validation, review, and documentation gates satisfied.")
+    event = set_status(root, todo_id, "completed", note or "Acceptance, validation, review, and documentation gates satisfied.")
+    if archive_on_complete:
+        event["archive_result"] = archive_completed_todos(root)
+    return event
 
 
 def archive_completed_todos(root: Path, *, keep_latest: int = 0, dry_run: bool = False) -> Dict[str, Any]:
@@ -554,6 +559,7 @@ def main() -> None:
     list_parser = subparsers.add_parser("list")
     list_parser.add_argument("--status", choices=sorted(VALID_STATUSES))
     list_parser.add_argument("--json", action="store_true")
+    list_parser.add_argument("--include-completed", action="store_true", help="Include completed TODO stubs in the default listing")
     subparsers.add_parser("start-next")
     status_parser = subparsers.add_parser("status")
     status_parser.add_argument("todo_id")
@@ -576,6 +582,7 @@ def main() -> None:
     complete_parser = subparsers.add_parser("complete")
     complete_parser.add_argument("todo_id")
     complete_parser.add_argument("--note", default="")
+    complete_parser.add_argument("--keep-in-ledger", action="store_true", help="Do not archive completed TODO history after completion")
     archive_parser = subparsers.add_parser("archive-completed")
     archive_parser.add_argument("--keep-latest", type=int, default=0, help="Keep the latest N completed TODO histories in todos.jsonl")
     archive_parser.add_argument("--dry-run", action="store_true")
@@ -584,7 +591,7 @@ def main() -> None:
     if args.command == "create":
         print(json.dumps(create_todo(root, args.title, rationale=args.rationale, risk=args.risk, acceptance_criteria=args.acceptance, expected_files=args.expected_file), ensure_ascii=False, indent=2))
     elif args.command == "list":
-        state = list_todos(root, args.status)
+        state = list_todos(root, args.status, include_completed=args.include_completed)
         if args.json:
             print(json.dumps(state, ensure_ascii=False, indent=2))
         else:
@@ -602,7 +609,7 @@ def main() -> None:
     elif args.command == "docs":
         print(json.dumps(update_documentation_status(root, args.todo_id, args.status, targets=args.target, note=args.note), ensure_ascii=False, indent=2))
     elif args.command == "complete":
-        print(json.dumps(complete_todo_if_ready(root, args.todo_id, args.note), ensure_ascii=False, indent=2))
+        print(json.dumps(complete_todo_if_ready(root, args.todo_id, args.note, archive_on_complete=not args.keep_in_ledger), ensure_ascii=False, indent=2))
     elif args.command == "archive-completed":
         print(json.dumps(archive_completed_todos(root, keep_latest=args.keep_latest, dry_run=args.dry_run), ensure_ascii=False, indent=2))
 

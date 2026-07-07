@@ -12,7 +12,7 @@ All state lives under:
 |---|---|---|
 | `profile.md` | Markdown | Exact first-run answers and assumptions |
 | `defaults.json` | JSON | Parsed defaults used silently on later runs |
-| `todos.jsonl` | JSONL | Append-only TODO lifecycle events |
+| `todos.jsonl` | JSONL | Active TODO lifecycle events plus compact completed stubs |
 | `critic-findings.jsonl` | JSONL | Append-only critical findings and decisions |
 | `decision-log.md` | Markdown | Human-readable main-agent decisions |
 | `review-ledger.md` | Markdown | Critic/review/validation summaries |
@@ -224,7 +224,8 @@ pro-review/<timestamp>-round-001/todo-candidates.json
 }
 ```
 
-Archived completed TODOs keep a compact active-ledger stub:
+Completed TODOs are archived by default when `todo_manager.py complete <id>`
+runs. Archived completed TODOs keep a compact active-ledger stub:
 
 ```json
 {
@@ -242,4 +243,5 @@ Archived completed TODOs keep a compact active-ledger stub:
 ```
 
 Consumers should treat `archive_stub` as terminal completed state and open the
-archive file only when detailed historical evidence is needed.
+archive file only when detailed historical evidence is needed. The CLI `list`
+command omits completed stubs unless `--include-completed` is provided.

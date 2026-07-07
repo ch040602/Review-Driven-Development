@@ -1,6 +1,6 @@
 interface:
   display_name: "Review-Driven Development"
-  short_description: "Plan, critique, TODO, validate, document, and persist project structure/completeness context."
-  default_prompt: "$review-driven-development Analyze this requirement, refresh project structure/completeness context, create TODOs, implement one TODO at a time with TDD validation, document completed work, and update TODOs after critical review."
+  short_description: "Plan, critique, validate, document, and keep active TODO state compact."
+  default_prompt: "$review-driven-development Analyze this requirement, refresh compact project context, create TODOs, implement one TODO at a time with TDD validation, document completed work, archive completed TODO history, and update active TODOs after critical review."
 policy:
   allow_implicit_invocation: true

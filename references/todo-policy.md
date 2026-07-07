@@ -24,18 +24,28 @@ deferred
 
 ## Completed TODO archival
 
-When `todos.jsonl` becomes noisy enough to slow context loading or trigger skill
-budget pressure, move completed TODO event history out of the active ledger:
+Completed TODO history should leave the active ledger immediately. Prefer the
+normal completion command:
+
+```bash
+python scripts/todo_manager.py --root . complete RDD-T-00000001
+```
+
+By default, completion writes full completed TODO events to
+`.codex/review-driven-development/todo_archive/` and rewrites `todos.jsonl`
+with non-completed events plus a compact `archive_stub` record for the completed
+TODO ID. Use `--keep-in-ledger` only when debugging the ledger.
+
+For older or manually edited ledgers, compact completed history explicitly:
 
 ```bash
 python scripts/todo_manager.py --root . archive-completed
 ```
 
-The command writes full completed TODO events to
-`.codex/review-driven-development/todo_archive/` and rewrites `todos.jsonl`
-with non-completed events plus compact `archive_stub` records for completed
-TODO IDs. The stubs must keep `status: completed` so dependency checks and
-terminal-backlog checks remain correct without reloading the full history.
+The stubs must keep `status: completed` so dependency checks and
+terminal-backlog checks remain correct without reloading full history. The
+default `list` command omits completed stubs; pass `--include-completed` when
+auditing terminal TODOs.
 
 ## Recommended TODO shape
 

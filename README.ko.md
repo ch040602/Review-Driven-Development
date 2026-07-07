@@ -208,12 +208,16 @@ TODO 완료:
 python skills/review-driven-development/scripts/todo_manager.py --root . complete RDD-T-00000001
 ```
 
-완료 TODO 이력이 `todos.jsonl`을 비대하게 만들어 빠른 context 로딩을 방해하면,
-완료 이벤트를 archive로 옮기고 dependency 판정을 위한 작은 stub만 남긴다:
+`complete`는 기본적으로 완료 TODO 전체 이력을 archive로 옮기고
+`todos.jsonl`에는 dependency 판정을 위한 작은 stub만 남긴다. 오래된 ledger나
+수동 정리가 필요하면 다음 명령을 실행한다:
 
 ```bash
 python skills/review-driven-development/scripts/todo_manager.py --root . archive-completed
 ```
+
+기본 `list`는 완료 stub을 숨긴다. 완료 항목 감사가 필요할 때만
+`list --include-completed`를 사용한다.
 
 ## 작동 방식
 

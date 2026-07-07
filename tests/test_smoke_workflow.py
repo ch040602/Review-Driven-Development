@@ -25,6 +25,7 @@ from todo_manager import (  # noqa: E402
     complete_todo_if_ready,
     create_todo,
     get_todo,
+    list_todos,
     update_documentation_status,
 )
 from workflow_runner import run_bootstrap_phase, run_commands_phase, run_overview_phase, run_role_map_phase, run_semantic_index_phase, run_semantic_search_phase, run_spark_review_phase, run_sync_phase, run_validation_phase  # noqa: E402
@@ -411,6 +412,57 @@ def test_archive_completed_todos_keeps_dependency_safe_stubs() -> None:
         assert completed["status"] == "completed"
         assert completed["archived"] is True
         assert followup_state["dependencies"] == [completed_id]
+
+
+def test_complete_cli_archives_completed_history_by_default() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        completed_id = prepare_completable_todo(root)
+
+        out = run_cmd(
+            str((SCRIPTS_DIR / "todo_manager.py").relative_to(REPO_ROOT)),
+            "--root",
+            str(root),
+            "complete",
+            completed_id,
+        ).stdout
+        payload = json.loads(out)
+        state_dir = root / ".codex" / "review-driven-development"
+        ledger_text = (state_dir / "todos.jsonl").read_text(encoding="utf-8")
+        archived_todo = get_todo(root, completed_id)
+
+        assert payload["archive_result"]["archived_todo_count"] == 1
+        assert '"event": "archive_stub"' in ledger_text
+        assert archived_todo["status"] == "completed"
+        assert archived_todo["archived"] is True
+        assert Path(payload["archive_result"]["archive_path"]).exists()
+
+
+def test_cli_list_hides_completed_stubs_unless_requested() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        completed_id = prepare_completable_todo(root)
+        complete_todo_if_ready(root, completed_id, archive_on_complete=True)
+        active = create_todo(root, "Active follow-up", acceptance_criteria=["visible in active listing"])
+
+        default_out = run_cmd(
+            str((SCRIPTS_DIR / "todo_manager.py").relative_to(REPO_ROOT)),
+            "--root",
+            str(root),
+            "list",
+        ).stdout
+        full_out = run_cmd(
+            str((SCRIPTS_DIR / "todo_manager.py").relative_to(REPO_ROOT)),
+            "--root",
+            str(root),
+            "list",
+            "--include-completed",
+        ).stdout
+
+        assert active["todo_id"] in default_out
+        assert completed_id not in default_out
+        assert completed_id in full_out
+        assert completed_id in list_todos(root)
 
 
 def test_external_skill_urls_are_consistent_offline() -> None:
