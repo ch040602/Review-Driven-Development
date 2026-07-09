@@ -22,6 +22,7 @@ import fnmatch
 import hashlib
 import json
 import re
+import subprocess
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -245,6 +246,25 @@ MDPR_SKILL_RELEASE_SCAN_PATTERN_HINTS = [
     "artifacts/codex-ppt-generated-assets/*.json",
 ]
 
+MDPRESENT_RELEASE_SCAN_PATTERN_HINTS = [
+    "package.json",
+    "pnpm-lock.yaml",
+    "packages/*/package.json",
+    "packages/*/src/**/*.ts",
+    "packages/*/test/**/*.mjs",
+    "schemas/*.json",
+    "scripts/validate-mdpr-runtime-profile.py",
+    "scripts/check_*.py",
+    "scripts/pack-smoke.mjs",
+    "scripts/*theme*.mjs",
+    "tests/**",
+    "README.md",
+    "README.ko.md",
+    "README.zh.md",
+    "docs/**/*.md",
+    "examples/**/*.md",
+]
+
 GENERIC_RELEASE_SCAN_PATTERN_HINTS = [
     "package.json",
     "pyproject.toml",
@@ -322,6 +342,8 @@ def detect_release_profile(root: Path) -> str:
         return "unity"
     if (root / "skills" / "mdpr-skill" / "SKILL.md").exists() or '"name": "mdpr-skill"' in package_text:
         return "mdpr-skill"
+    if (root / "scripts" / "validate-mdpr-runtime-profile.py").exists() or '"name": "mdpresent-workspace"' in package_text:
+        return "mdpresent-runtime"
     return "generic"
 
 
@@ -330,6 +352,8 @@ def release_pattern_hints(profile: str) -> List[str]:
         return UNITY_RELEASE_SCAN_PATTERN_HINTS
     if profile == "mdpr-skill":
         return MDPR_SKILL_RELEASE_SCAN_PATTERN_HINTS
+    if profile == "mdpresent-runtime":
+        return MDPRESENT_RELEASE_SCAN_PATTERN_HINTS
     return GENERIC_RELEASE_SCAN_PATTERN_HINTS
 
 
@@ -367,6 +391,27 @@ def release_scan_bucket(path: str, profile: str = "generic") -> str | None:
             or path.startswith("artifacts/codex-ppt-generated-assets/")
         ) and path.endswith(".json"):
             return "compatibility_artifacts"
+        return None
+
+    if profile == "mdpresent-runtime":
+        if path == "package.json" or path == "pnpm-lock.yaml" or (path.startswith("packages/") and path.endswith("package.json")):
+            return "workspace_config"
+        if path.startswith("packages/") and "/src/" in path and path.endswith(".ts"):
+            return "runtime_sources"
+        if path.startswith("packages/") and "/test/" in path and path.endswith(".mjs"):
+            return "runtime_tests"
+        if path.startswith("schemas/") and path.endswith(".json"):
+            return "schema_contracts"
+        if path == "scripts/validate-mdpr-runtime-profile.py":
+            return "runtime_preflight"
+        if path.startswith("scripts/") and (path.endswith(".py") or path.endswith(".mjs")):
+            return "validation_scripts"
+        if path.startswith("tests/"):
+            return "repo_tests"
+        if path == "README.md" or path.startswith("README.") or (path.startswith("docs/") and path.endswith(".md")):
+            return "runtime_docs"
+        if path.startswith("examples/") and path.endswith(".md"):
+            return "examples"
         return None
 
     if profile != "unity":
@@ -481,6 +526,16 @@ def required_release_buckets(profile: str) -> List[str]:
             "validation_scripts",
             "compatibility_artifacts",
         ]
+    if profile == "mdpresent-runtime":
+        return [
+            "workspace_config",
+            "runtime_sources",
+            "runtime_tests",
+            "runtime_preflight",
+            "validation_scripts",
+            "runtime_docs",
+            "examples",
+        ]
     return ["build_config", "source", "tests", "docs"]
 
 
@@ -564,6 +619,64 @@ def mdpr_skill_schema_sync_status(root: Path) -> Dict[str, Any]:
         "id": "schema_sync_gate_passed",
         "status": "not_evaluated",
         "source": "schema sync command/report required",
+    }
+
+
+def mdpresent_runtime_preflight_status(root: Path) -> Dict[str, Any]:
+    """Run MDPR's project-specific runtime preflight and summarize the evidence."""
+
+    script = root / "scripts" / "validate-mdpr-runtime-profile.py"
+    if not script.exists():
+        return {
+            "id": "project_specific_runtime_gates",
+            "status": "fail",
+            "source": "scripts/validate-mdpr-runtime-profile.py missing",
+        }
+
+    def run_preflight(*args: str) -> tuple[int, str, str]:
+        result = subprocess.run(
+            ["python", str(script), *args],
+            cwd=root,
+            text=True,
+            encoding="utf-8",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=30,
+            check=False,
+        )
+        return result.returncode, result.stdout, result.stderr
+
+    try:
+        code, stdout, stderr = run_preflight("--check", "--json")
+        self_code, self_stdout, self_stderr = run_preflight("--self-test", "--check", "--json")
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {
+            "id": "project_specific_runtime_gates",
+            "status": "fail",
+            "source": f"runtime preflight failed to execute: {exc}",
+        }
+
+    try:
+        report = json.loads(stdout)
+    except json.JSONDecodeError:
+        report = {}
+    try:
+        self_report = json.loads(self_stdout)
+    except json.JSONDecodeError:
+        self_report = {}
+
+    gates = report.get("gates", []) if isinstance(report, Mapping) else []
+    gate_ids = [str(gate.get("id")) for gate in gates if isinstance(gate, Mapping) and gate.get("id")]
+    valid = code == 0 and self_code == 0 and bool(report.get("valid")) and bool(self_report.get("valid"))
+    return {
+        "id": "project_specific_runtime_gates",
+        "status": "proven" if valid else "fail",
+        "source": "scripts/validate-mdpr-runtime-profile.py --check --json; --self-test --check --json",
+        "profileId": report.get("profileId"),
+        "runtimePreflightProfile": report.get("runtimePreflightProfile"),
+        "gateIds": gate_ids,
+        "selfTestCaught": self_report.get("caught"),
+        "stderr": "; ".join(part for part in [stderr.strip(), self_stderr.strip()] if part),
     }
 
 
@@ -1544,6 +1657,19 @@ def build_project_structure_completeness(data: Mapping[str, Any]) -> Dict[str, A
         ]
         external_manual_status = "not_required_for_local_static_skill_profile"
         final_release_evidence_status = "local_static_profile_pass" if release_scan_coverage.get("status") == "pass" else "local_static_profile_incomplete"
+    elif release_profile == "mdpresent-runtime":
+        runtime_preflight_constraint = mdpresent_runtime_preflight_status(root)
+        scan_ok = release_scan_coverage.get("status") == "pass"
+        preflight_ok = runtime_preflight_constraint.get("status") == "proven"
+        release_note = "Inventory coverage includes MDPR runtime sources plus project-specific runtime preflight evidence. The local gate executes the repository preflight profile and self-test; Office GUI, credentials, paid services, browser automation, external assets, downloaded fonts, and manual visual QA remain outside this inventory."
+        release_constraints = [
+            {"id": "release_critical_scan_coverage", "status": "proven" if scan_ok else "fail", "source": "release_scan_coverage"},
+            runtime_preflight_constraint,
+            {"id": "runtime_preflight_self_test", "status": "proven" if runtime_preflight_constraint.get("selfTestCaught") else "fail", "source": runtime_preflight_constraint.get("source")},
+            {"id": "docs_gate_id_sync", "status": "proven" if preflight_ok else "fail", "source": "scripts/validate-mdpr-runtime-profile.py docGateClaims"},
+        ]
+        external_manual_status = "not_required_for_local_runtime_preflight"
+        final_release_evidence_status = "local_runtime_preflight_pass" if scan_ok and preflight_ok else "local_runtime_preflight_fail"
     else:
         release_note = "Inventory coverage proves generic local release-critical files were included in context only; project-specific runtime/manual gates must be defined by the repository."
         release_constraints = [
@@ -1554,9 +1680,10 @@ def build_project_structure_completeness(data: Mapping[str, Any]) -> Dict[str, A
         final_release_evidence_status = "generic_local_static_profile"
     release_evidence_completeness = {
         "schema_version": 1,
-        "status": "local_static_scan_covered" if isinstance(release_scan_coverage, Mapping) and release_scan_coverage.get("status") == "pass" else "incomplete",
+        "status": final_release_evidence_status if release_profile == "mdpresent-runtime" else "local_static_scan_covered" if isinstance(release_scan_coverage, Mapping) and release_scan_coverage.get("status") == "pass" else "incomplete",
         "profile": release_profile,
         "release_scan_coverage_status": release_scan_coverage.get("status") if isinstance(release_scan_coverage, Mapping) else None,
+        "runtime_preflight_gate_ids": runtime_preflight_constraint.get("gateIds") if release_profile == "mdpresent-runtime" else None,
         "coverage_proof_path": str(STATE_DIR / RELEASE_CRITICAL_COVERAGE_PROOF_FILE).replace("\\", "/"),
         "coverage_proof_scope": data.get("release_critical_coverage_proof", {}).get("review_scope") if isinstance(data.get("release_critical_coverage_proof"), Mapping) else None,
         "coverage_proof_unclassified_count": data.get("release_critical_coverage_proof", {}).get("omitted_path_classification", {}).get("unclassified_count") if isinstance(data.get("release_critical_coverage_proof"), Mapping) else None,
@@ -1567,7 +1694,7 @@ def build_project_structure_completeness(data: Mapping[str, Any]) -> Dict[str, A
         "schema_version": 1,
         "profile": release_profile,
         "structure_completeness_score": assessment.get("score"),
-        "release_gate_status": "local_static_structure_gate_pass" if release_evidence_completeness["status"] == "local_static_scan_covered" else "local_static_structure_gate_incomplete",
+        "release_gate_status": "local_runtime_preflight_pass" if release_evidence_completeness["status"] == "local_runtime_preflight_pass" else "local_static_structure_gate_pass" if release_evidence_completeness["status"] == "local_static_scan_covered" else "local_static_structure_gate_incomplete",
         "external_manual_status": external_manual_status,
         "final_release_evidence_status": final_release_evidence_status,
         "constraints": release_constraints,
