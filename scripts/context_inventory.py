@@ -626,7 +626,7 @@ def mdpr_skill_schema_sync_status(root: Path) -> Dict[str, Any]:
 
     candidates = [
         root / ".codex" / "review-driven-development" / "schema-sync-evidence.json",
-        root / "artifacts" / "pro-review" / "mdpr-skill-runtime-sync-review-20260706.json",
+        *sorted((root / "artifacts" / "pro-review").glob("mdpr-skill-runtime-sync-review-*.json"), reverse=True),
     ]
     for path in candidates:
         if not path.exists():
@@ -635,12 +635,22 @@ def mdpr_skill_schema_sync_status(root: Path) -> Dict[str, Any]:
             report = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
-        mdpr_path = str(report.get("scope", {}).get("mdprPath", "")).strip()
-        if mdpr_path and not (root / mdpr_path).exists():
+        scope = report.get("scope", {}) if isinstance(report.get("scope"), Mapping) else {}
+        mdpr_path_text = str(scope.get("mdprPath", "")).strip()
+        mdpr_path = Path(mdpr_path_text) if mdpr_path_text else None
+        resolved_mdpr_path = mdpr_path if mdpr_path and mdpr_path.is_absolute() else root / mdpr_path if mdpr_path else None
+        if resolved_mdpr_path and not resolved_mdpr_path.exists():
             return {
                 "id": "schema_sync_gate_passed",
                 "status": "not_evaluated",
-                "source": f"{path.relative_to(root).as_posix()} references missing MDPR checkout {mdpr_path}",
+                "source": f"{path.relative_to(root).as_posix()} references missing MDPR checkout {mdpr_path_text}",
+            }
+        freshness_issue = mdpr_skill_schema_sync_freshness_issue(root, resolved_mdpr_path, report)
+        if freshness_issue:
+            return {
+                "id": "schema_sync_gate_passed",
+                "status": "not_evaluated",
+                "source": f"{path.relative_to(root).as_posix()} {freshness_issue}",
             }
         validations: List[Mapping[str, Any]] = []
         for key in ("localValidationAfterReview", "localValidationBeforeReview", "validations"):
@@ -657,6 +667,7 @@ def mdpr_skill_schema_sync_status(root: Path) -> Dict[str, Any]:
                     "status": "proven",
                     "source": path.relative_to(root).as_posix(),
                     "command": command,
+                    "mdprCommitAtValidation": scope.get("mdprCommitAtValidation") or scope.get("mdprCommitAtReview"),
                 }
             return {
                 "id": "schema_sync_gate_passed",
@@ -668,6 +679,70 @@ def mdpr_skill_schema_sync_status(root: Path) -> Dict[str, Any]:
         "status": "not_evaluated",
         "source": "schema sync command/report required",
     }
+
+
+def mdpr_skill_schema_sync_freshness_issue(root: Path, mdpr_path: Path | None, report: Mapping[str, Any]) -> str | None:
+    schema_sync = report.get("schemaSync", {}) if isinstance(report.get("schemaSync"), Mapping) else {}
+    scope = report.get("scope", {}) if isinstance(report.get("scope"), Mapping) else {}
+    created_at = str(report.get("created_at") or report.get("reviewedAt") or "")
+    if "20260706" in str(scope) or created_at.startswith("2026-07-06"):
+        return "is stale 2026-07-06 evidence"
+
+    mdpr_commit = scope.get("mdprCommitAtValidation") or scope.get("mdprCommitAtReview")
+    current_mdpr_commit = git_short_commit(mdpr_path) if mdpr_path else None
+    if mdpr_commit and current_mdpr_commit and str(mdpr_commit) != current_mdpr_commit:
+        return f"records MDPR commit {mdpr_commit}, current checkout is {current_mdpr_commit}"
+
+    local_hashes = schema_sync.get("localSchemaHashes") if isinstance(schema_sync.get("localSchemaHashes"), Mapping) else {}
+    mdpr_hashes = schema_sync.get("mdprSchemaHashes") if isinstance(schema_sync.get("mdprSchemaHashes"), Mapping) else {}
+    if not local_hashes or not mdpr_hashes:
+        return "does not record local and MDPR schema hashes"
+
+    for schema_name, recorded_hash in local_hashes.items():
+        if not isinstance(schema_name, str) or not isinstance(recorded_hash, str):
+            return "contains invalid local schema hash metadata"
+        local_schema = root / "schemas" / schema_name
+        if not local_schema.exists():
+            return f"references missing local schema {schema_name}"
+        if sha256_file(local_schema) != recorded_hash:
+            return f"local schema hash drift for {schema_name}"
+        mdpr_recorded_hash = mdpr_hashes.get(schema_name)
+        if mdpr_recorded_hash != recorded_hash:
+            return f"recorded local/MDPR schema hash mismatch for {schema_name}"
+        if mdpr_path:
+            mdpr_schema = mdpr_path / "schemas" / schema_name
+            if not mdpr_schema.exists():
+                return f"references missing MDPR schema {schema_name}"
+            if sha256_file(mdpr_schema) != mdpr_recorded_hash:
+                return f"MDPR schema hash drift for {schema_name}"
+    return None
+
+
+def git_short_commit(path: Path | None) -> str | None:
+    if not path:
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=path,
+            text=True,
+            encoding="utf-8",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def mdpresent_runtime_preflight_status(root: Path) -> Dict[str, Any]:

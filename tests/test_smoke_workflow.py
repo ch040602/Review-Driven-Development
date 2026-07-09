@@ -137,6 +137,75 @@ def test_review_driven_development_profile_is_explained_and_current() -> None:
     assert packet["created_at"] == inventory["created_at"]
 
 
+def test_mdpr_skill_schema_sync_uses_fresh_commit_bound_artifact() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "mdpr-skill"
+        mdpr = Path(tmp) / "MdPr"
+        (root / "schemas").mkdir(parents=True)
+        (root / "artifacts" / "pro-review").mkdir(parents=True)
+        (mdpr / "schemas").mkdir(parents=True)
+        schema_text = '{"schemaVersion":{"const":"mdpr-agent-hint-v1"}}\n'
+        for base in (root, mdpr):
+            (base / "schemas" / "agent-hint.schema.json").write_text(schema_text, encoding="utf-8")
+        schema_hash = ci.sha256_file(root / "schemas" / "agent-hint.schema.json")
+        stale_report = {
+            "schemaVersion": "mdpr-skill-pro-review-artifact-v1",
+            "reviewedAt": "2026-07-06T00:00:00Z",
+            "scope": {"mdprPath": str(mdpr), "mdprCommitAtReview": "old"},
+            "localValidationAfterReview": [
+                {"command": "node bin/mdpr-skill.js gate validate-schema-sync --mdpr-path .cache/mdpr", "status": "pass", "findings": []}
+            ],
+        }
+        fresh_report = {
+            "schemaVersion": "mdpr-skill-runtime-sync-evidence-v2",
+            "created_at": "2026-07-09T07:35:00+00:00",
+            "scope": {"mdprPath": str(mdpr), "mdprCommitAtValidation": "fresh"},
+            "schemaSync": {
+                "localSchemaHashes": {"agent-hint.schema.json": schema_hash},
+                "mdprSchemaHashes": {"agent-hint.schema.json": schema_hash},
+            },
+            "localValidationAfterReview": [
+                {"command": f"node bin/mdpr-skill.js gate validate-schema-sync --mdpr-path {mdpr}", "status": "pass", "findings": []}
+            ],
+        }
+        (root / "artifacts" / "pro-review" / "mdpr-skill-runtime-sync-review-20260706.json").write_text(json.dumps(stale_report), encoding="utf-8")
+        (root / "artifacts" / "pro-review" / "mdpr-skill-runtime-sync-review-20260709.json").write_text(json.dumps(fresh_report), encoding="utf-8")
+
+        status = ci.mdpr_skill_schema_sync_status(root)
+
+        assert status["status"] == "proven"
+        assert status["source"] == "artifacts/pro-review/mdpr-skill-runtime-sync-review-20260709.json"
+
+
+def test_mdpr_skill_schema_sync_rejects_schema_hash_drift() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "mdpr-skill"
+        mdpr = Path(tmp) / "MdPr"
+        (root / "schemas").mkdir(parents=True)
+        (root / "artifacts" / "pro-review").mkdir(parents=True)
+        (mdpr / "schemas").mkdir(parents=True)
+        (root / "schemas" / "agent-hint.schema.json").write_text('{"local":true}\n', encoding="utf-8")
+        (mdpr / "schemas" / "agent-hint.schema.json").write_text('{"local":false}\n', encoding="utf-8")
+        report = {
+            "schemaVersion": "mdpr-skill-runtime-sync-evidence-v2",
+            "created_at": "2026-07-09T07:35:00+00:00",
+            "scope": {"mdprPath": str(mdpr), "mdprCommitAtValidation": "fresh"},
+            "schemaSync": {
+                "localSchemaHashes": {"agent-hint.schema.json": ci.sha256_file(root / "schemas" / "agent-hint.schema.json")},
+                "mdprSchemaHashes": {"agent-hint.schema.json": ci.sha256_file(root / "schemas" / "agent-hint.schema.json")},
+            },
+            "localValidationAfterReview": [
+                {"command": f"node bin/mdpr-skill.js gate validate-schema-sync --mdpr-path {mdpr}", "status": "pass", "findings": []}
+            ],
+        }
+        (root / "artifacts" / "pro-review" / "mdpr-skill-runtime-sync-review-20260709.json").write_text(json.dumps(report), encoding="utf-8")
+
+        status = ci.mdpr_skill_schema_sync_status(root)
+
+        assert status["status"] == "not_evaluated"
+        assert "MDPR schema hash drift" in status["source"]
+
+
 def test_role_map_guides_future_exploration_without_source_scan() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
