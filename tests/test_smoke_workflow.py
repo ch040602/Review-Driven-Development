@@ -124,6 +124,19 @@ def test_context_inventory_standard_mode_is_compact_by_default() -> None:
     assert inventory["has_tests"] is True
 
 
+def test_review_driven_development_profile_is_explained_and_current() -> None:
+    inventory = build_inventory(REPO_ROOT, mode="standard")
+    packet = ci.build_project_structure_completeness(inventory)
+    rendered = ci.build_project_structure_completeness_md(packet)
+
+    assert inventory["release_profile"] == "review-driven-development"
+    assert packet["release_evidence_completeness"]["status"] == "local_rdd_skill_profile_pass"
+    assert packet["release_verdict"]["release_gate_status"] == "local_rdd_skill_profile_pass"
+    assert "intentionally separate from the MDPR runtime profile" in packet["release_evidence_completeness"]["note"]
+    assert "local_static_structure_gate_incomplete" not in rendered
+    assert packet["created_at"] == inventory["created_at"]
+
+
 def test_role_map_guides_future_exploration_without_source_scan() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)

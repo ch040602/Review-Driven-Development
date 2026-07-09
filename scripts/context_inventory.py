@@ -265,6 +265,20 @@ MDPRESENT_RELEASE_SCAN_PATTERN_HINTS = [
     "examples/**/*.md",
 ]
 
+RDD_RELEASE_SCAN_PATTERN_HINTS = [
+    "SKILL.md",
+    "scripts/*.py",
+    "tests/*.py",
+    "references/**/*.md",
+    "agents/**/*.md",
+    ".github/workflows/*.yml",
+    "pyproject.toml",
+    "README.md",
+    "README.ko.md",
+    "VALIDATION.md",
+    "external-skills.json",
+]
+
 GENERIC_RELEASE_SCAN_PATTERN_HINTS = [
     "package.json",
     "pyproject.toml",
@@ -344,6 +358,9 @@ def detect_release_profile(root: Path) -> str:
         return "mdpr-skill"
     if (root / "scripts" / "validate-mdpr-runtime-profile.py").exists() or '"name": "mdpresent-workspace"' in package_text:
         return "mdpresent-runtime"
+    skill_text = read_text_snippet(root / "SKILL.md", max_chars=1000).lower() if (root / "SKILL.md").exists() else ""
+    if "name: review-driven-development" in skill_text or ((root / "scripts" / "todo_manager.py").exists() and (root / "scripts" / "workflow_runner.py").exists()):
+        return "review-driven-development"
     return "generic"
 
 
@@ -354,6 +371,8 @@ def release_pattern_hints(profile: str) -> List[str]:
         return MDPR_SKILL_RELEASE_SCAN_PATTERN_HINTS
     if profile == "mdpresent-runtime":
         return MDPRESENT_RELEASE_SCAN_PATTERN_HINTS
+    if profile == "review-driven-development":
+        return RDD_RELEASE_SCAN_PATTERN_HINTS
     return GENERIC_RELEASE_SCAN_PATTERN_HINTS
 
 
@@ -412,6 +431,25 @@ def release_scan_bucket(path: str, profile: str = "generic") -> str | None:
             return "runtime_docs"
         if path.startswith("examples/") and path.endswith(".md"):
             return "examples"
+        return None
+
+    if profile == "review-driven-development":
+        if path == "SKILL.md":
+            return "skill_instruction"
+        if path.startswith("scripts/") and path.endswith(".py"):
+            return "workflow_scripts"
+        if path.startswith("tests/") and path.endswith(".py"):
+            return "tests"
+        if path.startswith("references/") and path.endswith(".md"):
+            return "references"
+        if path.startswith("agents/") and path.endswith(".md"):
+            return "agent_configs"
+        if path.startswith(".github/workflows/") and path.endswith((".yml", ".yaml")):
+            return "ci_workflow"
+        if path in {"pyproject.toml", "external-skills.json"}:
+            return "config"
+        if path in {"README.md", "README.ko.md", "VALIDATION.md"}:
+            return "docs"
         return None
 
     if profile != "unity":
@@ -535,6 +573,16 @@ def required_release_buckets(profile: str) -> List[str]:
             "validation_scripts",
             "runtime_docs",
             "examples",
+        ]
+    if profile == "review-driven-development":
+        return [
+            "skill_instruction",
+            "workflow_scripts",
+            "tests",
+            "references",
+            "ci_workflow",
+            "config",
+            "docs",
         ]
     return ["build_config", "source", "tests", "docs"]
 
@@ -1670,6 +1718,18 @@ def build_project_structure_completeness(data: Mapping[str, Any]) -> Dict[str, A
         ]
         external_manual_status = "not_required_for_local_runtime_preflight"
         final_release_evidence_status = "local_runtime_preflight_pass" if scan_ok and preflight_ok else "local_runtime_preflight_fail"
+    elif release_profile == "review-driven-development":
+        scan_ok = release_scan_coverage.get("status") == "pass"
+        release_note = "Inventory coverage proves review-driven-development local skill-critical files were included in context. This profile is intentionally separate from the MDPR runtime profile; generic runtime gates are not expected for the RDD skill itself."
+        release_constraints = [
+            {"id": "skill_instruction", "status": "proven" if scan_ok else "fail", "source": "release_scan_coverage"},
+            {"id": "workflow_scripts", "status": "proven" if scan_ok else "fail", "source": "release_scan_coverage"},
+            {"id": "tests_and_ci", "status": "proven" if scan_ok else "fail", "source": "release_scan_coverage"},
+            {"id": "reference_docs", "status": "proven" if scan_ok else "fail", "source": "release_scan_coverage"},
+            {"id": "mdpr_runtime_profile_scope", "status": "not_applicable", "source": "MDPR runtime preflight applies to MDPR repositories, not the RDD skill repository"},
+        ]
+        external_manual_status = "not_required_for_local_rdd_skill_profile"
+        final_release_evidence_status = "local_rdd_skill_profile_pass" if scan_ok else "local_rdd_skill_profile_incomplete"
     else:
         release_note = "Inventory coverage proves generic local release-critical files were included in context only; project-specific runtime/manual gates must be defined by the repository."
         release_constraints = [
@@ -1680,7 +1740,7 @@ def build_project_structure_completeness(data: Mapping[str, Any]) -> Dict[str, A
         final_release_evidence_status = "generic_local_static_profile"
     release_evidence_completeness = {
         "schema_version": 1,
-        "status": final_release_evidence_status if release_profile == "mdpresent-runtime" else "local_static_scan_covered" if isinstance(release_scan_coverage, Mapping) and release_scan_coverage.get("status") == "pass" else "incomplete",
+        "status": final_release_evidence_status if release_profile in {"mdpresent-runtime", "review-driven-development"} else "local_static_scan_covered" if isinstance(release_scan_coverage, Mapping) and release_scan_coverage.get("status") == "pass" else "incomplete",
         "profile": release_profile,
         "release_scan_coverage_status": release_scan_coverage.get("status") if isinstance(release_scan_coverage, Mapping) else None,
         "runtime_preflight_gate_ids": runtime_preflight_constraint.get("gateIds") if release_profile == "mdpresent-runtime" else None,
@@ -1694,7 +1754,7 @@ def build_project_structure_completeness(data: Mapping[str, Any]) -> Dict[str, A
         "schema_version": 1,
         "profile": release_profile,
         "structure_completeness_score": assessment.get("score"),
-        "release_gate_status": "local_runtime_preflight_pass" if release_evidence_completeness["status"] == "local_runtime_preflight_pass" else "local_static_structure_gate_pass" if release_evidence_completeness["status"] == "local_static_scan_covered" else "local_static_structure_gate_incomplete",
+        "release_gate_status": "local_runtime_preflight_pass" if release_evidence_completeness["status"] == "local_runtime_preflight_pass" else "local_rdd_skill_profile_pass" if release_evidence_completeness["status"] == "local_rdd_skill_profile_pass" else "local_static_structure_gate_pass" if release_evidence_completeness["status"] == "local_static_scan_covered" else "local_static_structure_gate_incomplete",
         "external_manual_status": external_manual_status,
         "final_release_evidence_status": final_release_evidence_status,
         "constraints": release_constraints,
