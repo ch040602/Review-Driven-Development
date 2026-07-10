@@ -6,6 +6,20 @@ The repository is now a usable Codex skill package for pre-operational use. It h
 
 However, the original validation was mostly static. It proved syntax and required-file presence, but did not fully prove the workflow loop.
 
+## 2026-07-10 model-routing review
+
+| Issue | Severity | Impact | Fix applied |
+|---|---:|---|---|
+| Role routing directly pinned three model IDs | High | Availability changes required code edits and allowed stale model choices | Moved model capabilities, task profiles, reasoning efforts, and budgets to validated `model-routing-policy.json` |
+| Tier selection was duplicated in `model_router.py` and `subagent_brief_builder.py` | High | Brief metadata and spawn plans could disagree | Made `model_router.py` the single source of route decisions; allocation tables now adapt its result |
+| No explicit simple-implementation versus logic-design route existed | Medium | Cheap mechanical work and new logic could receive the same allocation | Added task profiles: Spark/`low` for simple local implementation and GPT-5.6/`high` for logic/cross-file work |
+| Deep reasoning could be lowered implicitly by budget/model limitations | High | Security/data/architecture review could run below the declared depth | Added hard reasoning floors and `budget_limited` status; GPT-5.6/`max` requires the deep budget |
+| Spawn plans lacked runtime availability and aggregate budget gates | High | A plan could reference an unavailable model or exceed its intended cost | Added repeated `--available-model`, bounded fallbacks, relative cost units, and `plan_budget_exceeded` |
+| Static custom-agent configs did not match the new model/effort routes | High | Orchestration metadata could claim one effort while TOML ran another | Added Spark `low`; pinned Spark `medium`, GPT-5.6 `high`, and GPT-5.6 `max` configs and expose a config only on exact matches |
+| `SubagentStart` forced every route to be critical-only | High | The new explicitly delegated implementation profile could never patch | Kept unmarked routes critic-only and emits bounded implementation guidance only for an explicit implementation contract/task kind |
+
+The bundled catalog intentionally contains only GPT-5.6 and Codex Spark. Live provider discovery is not guessed: callers may supply the confirmed runtime list, and a custom policy can replace the catalog when availability changes.
+
 ## Issues found
 
 | Issue | Severity | Impact | Fix applied |

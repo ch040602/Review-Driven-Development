@@ -14,6 +14,10 @@ Suggested tests:
 - `context_inventory.search_semantic_index` ranks relevant files with embedding cosine when vectors are available, TF-IDF when available, and lexical fallback when forced.
 - `context_inventory.write_bootstrap` injects a marker-managed `AGENTS.md` fast-context block.
 - `workflow_runner` exposes `sync`, `overview`, `semantic-index`, `semantic-search`, `bootstrap`, and `commands` phases.
+- `model_router` loads a data-driven catalog containing only GPT-5.6 and Codex Spark, routes simple versus logic-design work by capability/complexity/reasoning, and refuses silent effort downgrades.
+- `model_router` distinguishes unavailable, per-route budget-limited, and whole-plan budget-exceeded routes while bounding fallbacks.
+- `workflow_runner` propagates confirmed available models and aggregate cost-unit limits into emitted spawn plans.
+- `rdd_subagent_start.py` defaults unmarked spawns to critical-only and permits bounded implementation guidance only for an explicit implementation route marker.
 - `quality_gate.run_quality_gate` dry-runs without executing commands.
 - `subagent_brief_builder.write_briefs` emits critical-only role briefs.
 - `doc_sync_check.build_doc_sync_report` reports documentation targets.

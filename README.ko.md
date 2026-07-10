@@ -126,7 +126,7 @@ python skills/review-driven-development/scripts/workflow_runner.py --root . --ph
 
 Codex는 `.codex/review-driven-development/context-pack.md`를 먼저 읽고, `Role map`과 `Reuse candidates`에서 책임 경계와 재사용 후보를 확인한 뒤, 필요할 때만 query hint 하나를 `--semantic-search "<query>"`로 실행합니다. 그 다음 active TODO가 가리키는 source/docs만 추가로 여는 방식으로 메모리를 아낍니다. 기본 ranking은 `scikit-learn` TF-IDF가 설치되어 있으면 이를 쓰고, 없으면 lexical overlap을 씁니다. dense `sentence-transformers` ranking은 모델 로드 비용을 감수할 때 `--embeddings`로 명시 opt-in합니다. `--sync --role-map`은 같은 책임 지도를 JSON으로 출력하고, `--sync --bootstrap`은 repo-local `AGENTS.md`에 marker-managed 자동 주입 block을 추가합니다.
 
-Subagent brief는 기본적으로 `--agent-budget spark-first`를 사용합니다. 반복적인 구조화 critic은 `codex-spark`로 자주 돌리고, cross-file 추론은 `codex-standard`, security/data/architecture 또는 명시적 deep review는 `codex-deep`으로 올립니다. `--emit-spawn-plan`은 `.codex/agents/rdd-*-critic.toml` 기반의 수동 spawn plan만 만들며, subagent가 실행됐다고 가장하지 않습니다. spark pass가 blocker/high 불확실성을 찾으면 전체 subagent를 올리지 말고 해당 role만 다음 tier로 재실행합니다.
+Subagent 라우팅은 `references/model-routing-policy.json`에 정의된 데이터 정책을 사용합니다. 기본 카탈로그는 `gpt-5.3-codex-spark`와 `gpt-5.6`만 포함합니다. 단순/local 구현은 Spark `low`, 반복적인 구조화 critic은 Spark `medium`, 추가 로직이나 cross-file 추론은 GPT-5.6 `high`, 명시적인 deep security/data/architecture 검토는 GPT-5.6 `max`를 사용합니다. 실행 시 가용 모델 목록과 route/plan 예산은 hard gate이며, 충족할 수 없는 `high`/`max` 요청을 조용히 낮추지 않습니다. `model_router.py --list-models`로 카탈로그를 보고, 반복 가능한 `--available-model` 옵션으로 실제 가용 모델만 허용할 수 있습니다. 생성된 spawn plan은 subagent 실행을 주장하지 않습니다.
 
 Minimality helper:
 

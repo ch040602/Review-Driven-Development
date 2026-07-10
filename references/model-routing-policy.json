@@ -1,0 +1,210 @@
+{
+  "schema_version": 1,
+  "complexity_order": [
+    "mechanical",
+    "local",
+    "cross-file",
+    "architectural"
+  ],
+  "reasoning_effort_order": [
+    "low",
+    "medium",
+    "high",
+    "max"
+  ],
+  "budget_profiles": {
+    "spark-first": {
+      "max_cost_tier": 3,
+      "max_reasoning_effort": "high",
+      "max_fallbacks": 1,
+      "max_plan_cost_units": 24
+    },
+    "balanced": {
+      "max_cost_tier": 3,
+      "max_reasoning_effort": "high",
+      "max_fallbacks": 1,
+      "max_plan_cost_units": 36
+    },
+    "deep": {
+      "max_cost_tier": 3,
+      "max_reasoning_effort": "max",
+      "max_fallbacks": 1,
+      "max_plan_cost_units": 64
+    }
+  },
+  "task_profiles": {
+    "simple-implementation": {
+      "contract": "implementation",
+      "sandbox": "workspace-write",
+      "required_capabilities": [
+        "simple-implementation"
+      ],
+      "complexity": "local",
+      "reasoning_effort": "low",
+      "escalate_to_task_kind": "logic-design",
+      "escalate_when": [
+        "new_logic",
+        "cross_file_coupling",
+        "unclear_acceptance_criteria"
+      ]
+    },
+    "logic-design": {
+      "contract": "implementation",
+      "sandbox": "workspace-write",
+      "required_capabilities": [
+        "logic-design",
+        "cross-file-reasoning"
+      ],
+      "complexity": "cross-file",
+      "reasoning_effort": "high",
+      "escalate_to_task_kind": "",
+      "escalate_when": [
+        "security_data_architecture_uncertainty",
+        "unresolved_blocker"
+      ]
+    },
+    "structured-critic": {
+      "contract": "critical-only",
+      "sandbox": "read-only",
+      "required_capabilities": [
+        "structured-review"
+      ],
+      "complexity": "local",
+      "reasoning_effort": "medium",
+      "depth_overrides": {
+        "minimal": {
+          "reasoning_effort": "low"
+        }
+      },
+      "escalate_to_task_kind": "cross-file-critic",
+      "escalate_when": [
+        "blocker",
+        "high",
+        "missing_evidence",
+        "cross_file_uncertainty"
+      ]
+    },
+    "cross-file-critic": {
+      "contract": "critical-only",
+      "sandbox": "read-only",
+      "required_capabilities": [
+        "structured-review",
+        "cross-file-reasoning"
+      ],
+      "complexity": "cross-file",
+      "reasoning_effort": "high",
+      "depth_overrides": {
+        "minimal": {
+          "reasoning_effort": "medium"
+        }
+      },
+      "escalate_to_task_kind": "risk-critic",
+      "escalate_when": [
+        "blocker",
+        "high",
+        "security_data_architecture_uncertainty"
+      ]
+    },
+    "risk-critic": {
+      "contract": "critical-only",
+      "sandbox": "read-only",
+      "required_capabilities": [
+        "structured-review",
+        "cross-file-reasoning",
+        "risk-reasoning"
+      ],
+      "complexity": "cross-file",
+      "reasoning_effort": "high",
+      "depth_overrides": {
+        "deep": {
+          "complexity": "architectural",
+          "reasoning_effort": "max"
+        }
+      },
+      "escalate_to_task_kind": "",
+      "escalate_when": [
+        "already_max",
+        "needs_user_or_external_evidence"
+      ]
+    }
+  },
+  "default_role_task_kind": "structured-critic",
+  "role_task_kinds": {
+    "requirements-critic": "structured-critic",
+    "test-tdd-critic": "structured-critic",
+    "documentation-critic": "structured-critic",
+    "markdown-doc-context-critic": "structured-critic",
+    "validation-runner-critic": "structured-critic",
+    "maintainability-critic": "structured-critic",
+    "quality-critic": "structured-critic",
+    "greenfield-scope-critic": "structured-critic",
+    "simplification-critic": "structured-critic",
+    "language-runtime-critic": "cross-file-critic",
+    "existing-code-reuse-refactor-critic": "cross-file-critic",
+    "source-driven-framework-critic": "cross-file-critic",
+    "source-grounding-critic": "cross-file-critic",
+    "performance-efficiency-critic": "cross-file-critic",
+    "accuracy-evaluation-critic": "cross-file-critic",
+    "architecture-critic": "risk-critic",
+    "security-risk-critic": "risk-critic",
+    "data-csv-critic": "risk-critic"
+  },
+  "fallback_action": "Keep the work with the current main agent; expand the available model list or budget before spawning a subagent.",
+  "models": [
+    {
+      "id": "gpt-5.3-codex-spark",
+      "available_by_default": true,
+      "capabilities": [
+        "simple-implementation",
+        "structured-review"
+      ],
+      "max_complexity": "local",
+      "reasoning_efforts": [
+        "low",
+        "medium"
+      ],
+      "cost_tier": 1,
+      "latency_tier": 1,
+      "quality_tier": 3,
+      "agent_tiers": {
+        "low": "codex-spark",
+        "medium": "codex-spark"
+      },
+      "critic_agents": {
+        "low": "rdd_spark_low_critic",
+        "medium": "rdd_spark_critic"
+      }
+    },
+    {
+      "id": "gpt-5.6",
+      "available_by_default": true,
+      "capabilities": [
+        "simple-implementation",
+        "logic-design",
+        "structured-review",
+        "cross-file-reasoning",
+        "risk-reasoning"
+      ],
+      "max_complexity": "architectural",
+      "reasoning_efforts": [
+        "low",
+        "medium",
+        "high",
+        "max"
+      ],
+      "cost_tier": 3,
+      "latency_tier": 3,
+      "quality_tier": 5,
+      "agent_tiers": {
+        "low": "codex-standard",
+        "medium": "codex-standard",
+        "high": "codex-standard",
+        "max": "codex-deep"
+      },
+      "critic_agents": {
+        "high": "rdd_standard_critic",
+        "max": "rdd_deep_critic"
+      }
+    }
+  ]
+}

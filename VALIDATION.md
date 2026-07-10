@@ -1,5 +1,39 @@
 # Validation evidence
 
+## 2026-07-10 capability-based model routing update
+
+Commands:
+
+```bash
+python -m pytest -q
+python scripts/self_test.py
+python scripts/validate_skill.py --skill-dir .
+python -m compileall -q -f scripts
+python -m ruff check scripts/model_router.py scripts/subagent_brief_builder.py scripts/validate_skill.py scripts/workflow_runner.py tests/test_model_router.py tests/test_smoke_workflow.py tests/test_spark_agent_config.py
+python scripts/model_router.py --list-models
+python scripts/model_router.py --phase execution --task-kind simple-implementation
+python scripts/model_router.py --phase execution --task-kind logic-design
+python scripts/model_router.py --phase preplan --role security-risk-critic --critic-depth deep --agent-budget deep
+```
+
+Observed result:
+
+```text
+pytest: 71 passed
+self_test.py: ok true
+Skill validation report: ok True
+compileall: passed
+Ruff on changed Python/test files: passed
+catalog: gpt-5.3-codex-spark, gpt-5.6 only
+simple implementation: gpt-5.3-codex-spark / low
+logic design: gpt-5.6 / high
+deep security critic: gpt-5.6 / max
+```
+
+Coverage includes policy-schema validation, catalog substitution without code changes, runtime availability filtering, explicit unavailable/budget-limited statuses, no silent `max` downgrade, bounded fallback candidates, aggregate spawn-plan budget enforcement, workflow propagation (including explicit execution-phase implementation routes), static custom-agent model/effort matching, and default-critical versus explicitly bounded-implementation hook behavior.
+
+Repository-wide Ruff still reports the pre-existing unused `typing.Iterable` import in `scripts/diff_budget.py`; that unrelated file was not changed by this routing update.
+
 Validation performed after README and GitHub repository polish.
 
 ## Static validation

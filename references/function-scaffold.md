@@ -8,7 +8,7 @@ This file is derived from public functions/classes extracted from current `scrip
 
 1. `rdd_state.py` — first-run profile/defaults persistence
 2. `context_inventory.py` and `requirement_analyzer.py` — source/docs/data requirement understanding
-3. `subagent_brief_builder.py` and `critic_ledger.py` — critical-only debate and decision capture
+3. `model_router.py`, `subagent_brief_builder.py`, and `critic_ledger.py` — capability-routed critical-only debate and decision capture
 4. `todo_manager.py` — TODO lifecycle and update loop
 5. `quality_gate.py` and `data_profile.py` — TDD/data validation evidence
 6. `doc_sync_check.py` — documentation gate
@@ -26,6 +26,7 @@ This file is derived from public functions/classes extracted from current `scrip
 | `data_profile.py` | `now_iso`, `detect_dialect`, `iter_delimited_rows`, `iter_jsonl_rows`, `profile_rows`, `profile_data_file`, `discover_data_files`, `build_data_profile_report` … | Data profiling helper for the `review-driven-development` data/CSV critic. |
 | `doc_sync_check.py` | `now_iso`, `filename_timestamp`, `path_exists`, `discover_docs`, `infer_targets_from_files`, `load_todo`, `infer_targets_for_todo`, `build_doc_sync_report` … | Documentation synchronization checker helper. |
 | `external_skill_registry.py` | `ExternalSkill`, `all_skills`, `skills_for_phase`, `required_skills`, `find_skill`, `install_hints`, `render_markdown`, `as_json` … | External skill registry for review-driven-development. |
+| `model_router.py` | `load_routing_policy`, `validate_routing_policy`, `route_task`, `route_role`, `role_from_brief_path`, `build_spawn_plan`, `main` | Capability/complexity/reasoning/availability/budget model routing. |
 | `quality_gate.py` | `now_iso`, `filename_timestamp`, `load_json`, `normalize_commands`, `load_commands`, `select_commands`, `run_command`, `evaluate_results` … | Quality gate evidence helper for review-driven-development. |
 | `rdd_state.py` | `now_iso`, `filename_timestamp`, `resolve_root`, `state_path`, `initial_text_for`, `ensure_state`, `read_json`, `write_json` … | Project-local state helper for the review-driven-development skill. |
 | `requirement_analyzer.py` | `Option`, `RequirementPacket`, `summarize_prompt`, `extract_constraints`, `infer_language_options`, `build_method_options`, `build_existing_code_options`, `build_validation_options` … | Requirement analysis helper. |
@@ -169,6 +170,20 @@ External skill registry for review-driven-development.
 | `as_json` | function | Render skill entries as JSON. |
 | `write_registry` | function | Write registry to a file as JSON or Markdown. |
 | `main` | function | CLI entrypoint for external skill registry. |
+
+## `model_router.py`
+
+Capability/complexity/reasoning/availability/budget router for RDD subagent work.
+
+| Symbol | Type | Contract role |
+|---|---|---|
+| `load_routing_policy` | function | Load and validate the bundled or caller-supplied JSON policy. |
+| `validate_routing_policy` | function | Reject malformed task, model, capability, effort, complexity, and budget definitions. |
+| `route_task` | function | Select the lowest-cost available model satisfying every hard route requirement. |
+| `route_role` | function | Map a critical role to its task profile and return authoritative route metadata. |
+| `role_from_brief_path` | function | Infer a critic role from a generated brief filename. |
+| `build_spawn_plan` | function | Build manual spawn instructions and enforce aggregate relative-cost limits. |
+| `main` | function | CLI entrypoint for model listing, task/role routing, and spawn-plan generation. |
 
 ## `quality_gate.py`
 
@@ -357,7 +372,7 @@ High-level workflow orchestration preview.
 | `build_first_run_action` | function | Return the action the main agent should take for first-run setup. |
 | `run_preplan_critique_phase` | function | Write preplan critical-only subagent briefs. |
 | `run_todo_generation_phase` | function | Convert accepted findings into TODOs. |
-| `run_execution_phase` | function | Start the next TODO. |
+| `run_execution_phase` | function | Start the next TODO and optionally emit an explicit bounded implementation route. |
 | `run_validation_phase` | function | Prepare validation evidence and critical validation briefs. |
 | `run_documentation_phase` | function | Prepare documentation check report. |
 | `run_improvement_phase` | function | Write improvement critical-only subagent briefs. |

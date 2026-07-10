@@ -60,7 +60,7 @@ python skills/review-driven-development/scripts/workflow_runner.py --root . --ph
 
 Codex should open `.codex/review-driven-development/context-pack.md` first, check its `Role map`, run one listed query hint with `--semantic-search "<query>"` when needed, then inspect only the files referenced by the active TODO. Default ranking uses `scikit-learn` TF-IDF when installed, then lexical overlap; add `--embeddings` only when dense `sentence-transformers` ranking is worth the model-load cost. `--sync --role-map` prints the responsibility map as JSON, and `--sync --bootstrap` writes a marker-managed `AGENTS.md` block for future Codex sessions.
 
-Subagent briefs default to `--agent-budget spark-first`: frequent structured critics are routed to `codex-spark`, non-mechanical cross-file reasoning uses `codex-standard`, and security/data/architecture or explicit deep reviews use `codex-deep`. If a spark pass reports blocker/high uncertainty, rerun only that role at the next tier.
+Subagent routing is data-driven through `references/model-routing-policy.json`. The bundled catalog contains only `gpt-5.3-codex-spark` and `gpt-5.6`: simple/local implementation uses Spark `low`, structured critics use Spark `medium`, additional logic or cross-file reasoning uses GPT-5.6 `high`, and explicit deep security/data/architecture review uses GPT-5.6 `max`. Runtime availability and route/plan budgets are hard gates; an unsatisfied `high`/`max` request is never silently downgraded. Use `model_router.py --list-models` to inspect the catalog and repeated `--available-model` flags to constrain a run.
 
 Default `self_test.py` avoids embedding model loading for CI stability. Run the heavier embedding smoke check explicitly:
 

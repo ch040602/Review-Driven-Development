@@ -5,15 +5,20 @@ from __future__ import annotations
 
 import argparse
 import py_compile
-import re
 from pathlib import Path
 from typing import Dict, List
+
+try:
+    from .model_router import load_routing_policy
+except ImportError:  # pragma: no cover
+    from model_router import load_routing_policy  # type: ignore
 
 REQUIRED_FILES = [
     "SKILL.md",
     "references/workflow.md",
     "references/subagent-roles.md",
     "references/model-routing.md",
+    "references/model-routing-policy.json",
     "references/minimal-solution-policy.md",
     "references/hook-policy.md",
     "references/internal-skill-map.md",
@@ -82,6 +87,19 @@ def check_script_compilation(skill_dir: Path) -> List[str]:
     return errors
 
 
+def check_model_routing_policy(skill_dir: Path) -> List[str]:
+    """Validate the bundled data-driven model catalog and routing policy."""
+
+    path = skill_dir / "references" / "model-routing-policy.json"
+    if not path.exists():
+        return ["model-routing-policy.json missing"]
+    try:
+        load_routing_policy(path)
+    except (OSError, ValueError, TypeError) as exc:
+        return [f"invalid model routing policy: {exc}"]
+    return []
+
+
 def check_external_links(skill_dir: Path) -> List[str]:
     """Check that external skill links file contains required URLs.
 
@@ -141,6 +159,7 @@ def validate(skill_dir: Path) -> Dict[str, object]:
     errors.extend(check_required_files(skill_dir))
     errors.extend(check_frontmatter(skill_dir))
     errors.extend(check_script_compilation(skill_dir))
+    errors.extend(check_model_routing_policy(skill_dir))
     errors.extend(check_external_links(skill_dir))
     errors.extend(check_bilingual_readme(skill_dir))
     errors.extend(check_optional_tests(skill_dir))

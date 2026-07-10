@@ -306,7 +306,17 @@ The context layer follows the ECC-style idea of loading compact, relevant contex
 
 Codex should read `context-pack.md` first, check its `Role map` and `Reuse candidates` sections, run one listed query hint with `--semantic-search "<query>"` when needed, then open only the source/docs referenced by the active TODO. `context-semantic-index.json` stores the bounded file/symbol/term corpus and optional embedding vectors. Default ranking uses `scikit-learn` TF-IDF when installed, then lexical overlap; add `--embeddings` only when dense `sentence-transformers` ranking is worth the model-load cost. `--sync --role-map` prints the same responsibility map as JSON for scripts, and `--sync --bootstrap` inserts a marker-managed `AGENTS.md` block so future Codex sessions see this policy automatically.
 
-Subagent briefs use `--agent-budget spark-first` by default. That budget routes frequent structured critics to `codex-spark`, keeps cross-file reasoning on `codex-standard`, and reserves `codex-deep` for security, data, architecture, broad migrations, or explicit `--critic-depth deep`. `--emit-spawn-plan` writes a manual custom-agent plan using `.codex/agents/rdd-*-critic.toml`; it does not claim a subagent ran. If a spark pass finds blocker/high uncertainty, rerun that single role at the next tier instead of escalating every subagent.
+Subagent routing is data-driven through `references/model-routing-policy.json`. The bundled catalog contains only `gpt-5.3-codex-spark` and `gpt-5.6`: simple/local implementation uses Spark `low`, structured critics use Spark `medium`, additional logic or cross-file reasoning uses GPT-5.6 `high`, and explicit deep security/data/architecture review uses GPT-5.6 `max`. `--available-model` narrows a run to models confirmed available; capability, complexity, reasoning, per-route budget, and whole-plan budget are all hard gates. The router returns an explicit non-runnable status instead of silently lowering `high`/`max`. Generated spawn plans do not claim a subagent ran.
+
+Routing examples:
+
+```bash
+python skills/review-driven-development/scripts/model_router.py --list-models
+python skills/review-driven-development/scripts/model_router.py --phase execution --task-kind simple-implementation
+python skills/review-driven-development/scripts/model_router.py --phase execution --task-kind logic-design
+python skills/review-driven-development/scripts/workflow_runner.py --root . --phase execution --implementation-task-kind simple-implementation --available-model gpt-5.3-codex-spark --available-model gpt-5.6
+python skills/review-driven-development/scripts/model_router.py --phase preplan --role security-risk-critic --critic-depth deep --agent-budget deep
+```
 
 Minimality helpers:
 

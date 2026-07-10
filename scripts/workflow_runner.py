@@ -10,13 +10,14 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Dict, List, Mapping, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 try:
     from .context_inventory import load_context_pack, load_semantic_index, search_semantic_index, summarize_inventory, summarize_semantic_index, sync_context, write_bootstrap
     from .critic_ledger import accepted_findings, findings_to_todo_seeds
     from .doc_sync_check import build_doc_sync_report, save_report as save_doc_report
     from .quality_gate import build_report, load_commands, save_report, select_commands
+    from .model_router import load_routing_policy, route_task
     from .pro_review import run_review as run_pro_review_loop
     from .rdd_state import ensure_state, load_defaults
     from .requirement_analyzer import create_requirement_packet, packet_to_dict
@@ -27,6 +28,7 @@ except ImportError:  # pragma: no cover
     from critic_ledger import accepted_findings, findings_to_todo_seeds  # type: ignore
     from doc_sync_check import build_doc_sync_report, save_report as save_doc_report  # type: ignore
     from quality_gate import build_report, load_commands, save_report, select_commands  # type: ignore
+    from model_router import load_routing_policy, route_task  # type: ignore
     from pro_review import run_review as run_pro_review_loop  # type: ignore
     from rdd_state import ensure_state, load_defaults  # type: ignore
     from requirement_analyzer import create_requirement_packet, packet_to_dict  # type: ignore
@@ -312,6 +314,29 @@ def build_first_run_action(root: Path, prompt: str) -> Dict[str, object]:
     }
 
 
+def _routing_kwargs(
+    *,
+    available_models: Optional[List[str]],
+    routing_policy: Optional[Mapping[str, Any]],
+    task_complexity: str | None,
+    reasoning_effort: str | None,
+    max_cost_tier: int | None,
+    max_reasoning_effort: str | None,
+    max_fallbacks: int | None,
+) -> Dict[str, Any]:
+    """Return shared router arguments for briefs, allocations, and spawn plans."""
+
+    return {
+        "available_models": available_models,
+        "routing_policy": routing_policy,
+        "complexity": task_complexity,
+        "reasoning_effort": reasoning_effort,
+        "max_cost_tier": max_cost_tier,
+        "max_reasoning_effort": max_reasoning_effort,
+        "max_fallbacks": max_fallbacks,
+    }
+
+
 def run_preplan_critique_phase(
     root: Path,
     context_summary: str,
@@ -320,9 +345,26 @@ def run_preplan_critique_phase(
     max_roles: int | None = None,
     context_max_chars: int = 1200,
     agent_budget: str = "spark-first",
+    available_models: Optional[List[str]] = None,
+    routing_policy: Optional[Mapping[str, Any]] = None,
+    task_complexity: str | None = None,
+    reasoning_effort: str | None = None,
+    max_cost_tier: int | None = None,
+    max_reasoning_effort: str | None = None,
+    max_fallbacks: int | None = None,
+    max_plan_cost_units: int | None = None,
 ) -> Dict[str, object]:
     """Write preplan critical-only subagent briefs."""
 
+    routing = _routing_kwargs(
+        available_models=available_models,
+        routing_policy=routing_policy,
+        task_complexity=task_complexity,
+        reasoning_effort=reasoning_effort,
+        max_cost_tier=max_cost_tier,
+        max_reasoning_effort=max_reasoning_effort,
+        max_fallbacks=max_fallbacks,
+    )
     paths = write_briefs(
         root,
         "preplan",
@@ -332,15 +374,34 @@ def run_preplan_critique_phase(
         max_roles=max_roles,
         context_max_chars=context_max_chars,
         agent_budget=agent_budget,
+        **routing,
     )
     roles = [Path(path).stem for path in paths]
+    spawn_plan_path = write_spawn_plan(
+        root,
+        "preplan",
+        paths,
+        critic_depth=critic_depth,
+        agent_budget=agent_budget,
+        max_plan_cost_units=max_plan_cost_units,
+        **routing,
+    )
+    spawn_plan = json.loads(spawn_plan_path.read_text(encoding="utf-8"))
     return {
         "phase": "preplan",
         "brief_paths": [str(path) for path in paths],
+        "spawn_plan_path": str(spawn_plan_path),
+        "spawn_plan": spawn_plan,
         "critic_depth": critic_depth,
         "agent_budget": agent_budget,
-        "agent_allocations": allocation_table_for_roles(roles, "preplan", critic_depth=critic_depth, agent_budget=agent_budget),
-        "main_agent_next": "Run only the generated critical briefs, collect findings, then decide.",
+        "agent_allocations": allocation_table_for_roles(
+            roles,
+            "preplan",
+            critic_depth=critic_depth,
+            agent_budget=agent_budget,
+            **routing,
+        ),
+        "main_agent_next": "Run only spawn-plan entries with route_status=selected; keep every unroutable or over-budget brief with the main agent, then classify findings.",
     }
 
 
@@ -368,15 +429,58 @@ def run_todo_generation_phase(root: Path) -> Dict[str, object]:
     return {"created_todos": created, "seed_count": len(seeds)}
 
 
-def run_execution_phase(root: Path) -> Dict[str, object]:
-    """Start the next TODO.
+def run_execution_phase(
+    root: Path,
+    *,
+    implementation_task_kind: str | None = None,
+    agent_budget: str = "spark-first",
+    available_models: Optional[List[str]] = None,
+    routing_policy: Optional[Mapping[str, Any]] = None,
+    task_complexity: str | None = None,
+    reasoning_effort: str | None = None,
+    max_cost_tier: int | None = None,
+    max_reasoning_effort: str | None = None,
+    max_fallbacks: int | None = None,
+) -> Dict[str, object]:
+    """Start the next TODO and optionally route an explicit implementation slice.
 
     This function does not edit source code. The main Codex agent must perform
-    implementation using the selected TODO and internal skills.
+    implementation or explicitly delegate the bounded route.
     """
 
     todo = start_next_todo(root)
-    return {"active_todo": todo, "main_agent_next": "Use test-driven-development, implement smallest vertical slice, then run validation."}
+    result: Dict[str, object] = {
+        "active_todo": todo,
+        "main_agent_next": "Use test-driven-development, implement smallest vertical slice, then run validation.",
+    }
+    if not todo or not implementation_task_kind:
+        return result
+
+    route = route_task(
+        implementation_task_kind,
+        phase="execution",
+        agent_budget=agent_budget,
+        available_models=available_models,
+        routing_policy=routing_policy,
+        complexity=task_complexity,
+        reasoning_effort=reasoning_effort,
+        max_cost_tier=max_cost_tier,
+        max_reasoning_effort=max_reasoning_effort,
+        max_fallbacks=max_fallbacks,
+    )
+    route["todo_id"] = todo.get("todo_id")
+    result["implementation_route"] = route
+    if route["route_status"] == "selected":
+        result["main_agent_next"] = (
+            "Delegate only this bounded TODO slice if useful; include the emitted task_kind and "
+            "contract=implementation marker in the spawn payload, then validate the result."
+        )
+    else:
+        result["main_agent_next"] = (
+            "Do not spawn the implementation route. Keep the TODO with the current main agent or "
+            "explicitly expand model availability/budget without lowering the reasoning requirement."
+        )
+    return result
 
 
 def run_validation_phase(
@@ -388,9 +492,26 @@ def run_validation_phase(
     max_roles: int | None = None,
     context_max_chars: int = 1200,
     agent_budget: str = "spark-first",
+    available_models: Optional[List[str]] = None,
+    routing_policy: Optional[Mapping[str, Any]] = None,
+    task_complexity: str | None = None,
+    reasoning_effort: str | None = None,
+    max_cost_tier: int | None = None,
+    max_reasoning_effort: str | None = None,
+    max_fallbacks: int | None = None,
+    max_plan_cost_units: int | None = None,
 ) -> Dict[str, object]:
     """Prepare validation evidence and critical validation briefs."""
 
+    routing = _routing_kwargs(
+        available_models=available_models,
+        routing_policy=routing_policy,
+        task_complexity=task_complexity,
+        reasoning_effort=reasoning_effort,
+        max_cost_tier=max_cost_tier,
+        max_reasoning_effort=max_reasoning_effort,
+        max_fallbacks=max_fallbacks,
+    )
     selected = select_commands(load_commands(root), kinds or ["test", "lint", "build"])
     report = build_report(todo_id, execute=False, selected=selected, results=[])
     report_path = save_report(root, todo_id, report)
@@ -403,13 +524,33 @@ def run_validation_phase(
         max_roles=max_roles,
         context_max_chars=context_max_chars,
         agent_budget=agent_budget,
+        **routing,
     )
     roles = [Path(path).stem for path in brief_paths]
+    spawn_plan_path = write_spawn_plan(
+        root,
+        "validation",
+        brief_paths,
+        critic_depth=critic_depth,
+        agent_budget=agent_budget,
+        max_plan_cost_units=max_plan_cost_units,
+        **routing,
+    )
+    spawn_plan = json.loads(spawn_plan_path.read_text(encoding="utf-8"))
     return {
         "validation_report": str(report_path),
         "brief_paths": [str(path) for path in brief_paths],
+        "spawn_plan_path": str(spawn_plan_path),
+        "spawn_plan": spawn_plan,
         "agent_budget": agent_budget,
-        "agent_allocations": allocation_table_for_roles(roles, "validation", critic_depth=critic_depth, agent_budget=agent_budget),
+        "agent_allocations": allocation_table_for_roles(
+            roles,
+            "validation",
+            critic_depth=critic_depth,
+            agent_budget=agent_budget,
+            **routing,
+        ),
+        "main_agent_next": "Run only spawn-plan entries with route_status=selected; do not weaken or execute unavailable/budget-limited routes.",
     }
 
 
@@ -419,9 +560,21 @@ def run_spark_review_phase(
     context_summary: str,
     *,
     context_max_chars: int = 1200,
+    available_models: Optional[List[str]] = None,
+    routing_policy: Optional[Mapping[str, Any]] = None,
+    max_plan_cost_units: int | None = None,
 ) -> Dict[str, object]:
     """Prepare a Spark-first simplification review brief and manual spawn plan."""
 
+    routing = _routing_kwargs(
+        available_models=available_models,
+        routing_policy=routing_policy,
+        task_complexity=None,
+        reasoning_effort=None,
+        max_cost_tier=None,
+        max_reasoning_effort=None,
+        max_fallbacks=None,
+    )
     brief_paths = write_briefs(
         root,
         "validation",
@@ -432,15 +585,28 @@ def run_spark_review_phase(
         max_roles=1,
         context_max_chars=context_max_chars,
         agent_budget="spark-first",
+        **routing,
     )
-    spawn_plan_path = write_spawn_plan(root, "validation", brief_paths, critic_depth="minimal", agent_budget="spark-first")
+    spawn_plan_path = write_spawn_plan(
+        root,
+        "validation",
+        brief_paths,
+        critic_depth="minimal",
+        agent_budget="spark-first",
+        max_plan_cost_units=max_plan_cost_units,
+        **routing,
+    )
     spawn_plan = json.loads(spawn_plan_path.read_text(encoding="utf-8"))
     return {
         "phase": "spark-review",
         "brief_paths": [str(path) for path in brief_paths],
         "spawn_plan_path": str(spawn_plan_path),
         "spawn_plan": spawn_plan,
-        "main_agent_next": "Spawn rdd_spark_critic manually only if this fast simplification review is worth the token cost.",
+        "main_agent_next": (
+            "Spawn the selected simplification route manually only if the token cost is justified."
+            if spawn_plan and spawn_plan[0].get("route_status") == "selected"
+            else "Do not spawn the simplification critic; keep the review with the main agent or expand availability/budget explicitly."
+        ),
     }
 
 
@@ -461,9 +627,26 @@ def run_improvement_phase(
     max_roles: int | None = None,
     context_max_chars: int = 1200,
     agent_budget: str = "spark-first",
+    available_models: Optional[List[str]] = None,
+    routing_policy: Optional[Mapping[str, Any]] = None,
+    task_complexity: str | None = None,
+    reasoning_effort: str | None = None,
+    max_cost_tier: int | None = None,
+    max_reasoning_effort: str | None = None,
+    max_fallbacks: int | None = None,
+    max_plan_cost_units: int | None = None,
 ) -> Dict[str, object]:
     """Write improvement critical-only subagent briefs."""
 
+    routing = _routing_kwargs(
+        available_models=available_models,
+        routing_policy=routing_policy,
+        task_complexity=task_complexity,
+        reasoning_effort=reasoning_effort,
+        max_cost_tier=max_cost_tier,
+        max_reasoning_effort=max_reasoning_effort,
+        max_fallbacks=max_fallbacks,
+    )
     paths = write_briefs(
         root,
         "improvement",
@@ -473,15 +656,34 @@ def run_improvement_phase(
         max_roles=max_roles,
         context_max_chars=context_max_chars,
         agent_budget=agent_budget,
+        **routing,
     )
     roles = [Path(path).stem for path in paths]
+    spawn_plan_path = write_spawn_plan(
+        root,
+        "improvement",
+        paths,
+        critic_depth=critic_depth,
+        agent_budget=agent_budget,
+        max_plan_cost_units=max_plan_cost_units,
+        **routing,
+    )
+    spawn_plan = json.loads(spawn_plan_path.read_text(encoding="utf-8"))
     return {
         "phase": "improvement",
         "brief_paths": [str(path) for path in paths],
+        "spawn_plan_path": str(spawn_plan_path),
+        "spawn_plan": spawn_plan,
         "critic_depth": critic_depth,
         "agent_budget": agent_budget,
-        "agent_allocations": allocation_table_for_roles(roles, "improvement", critic_depth=critic_depth, agent_budget=agent_budget),
-        "main_agent_next": "Accept/reject/defer improvement findings and update TODOs.",
+        "agent_allocations": allocation_table_for_roles(
+            roles,
+            "improvement",
+            critic_depth=critic_depth,
+            agent_budget=agent_budget,
+            **routing,
+        ),
+        "main_agent_next": "Run only selected spawn-plan entries, then accept/reject/defer findings and update TODOs.",
     }
 
 
@@ -521,6 +723,15 @@ def run_once(
     max_roles: int | None = None,
     context_max_chars: int = 1200,
     agent_budget: str = "spark-first",
+    implementation_task_kind: str | None = None,
+    available_models: Optional[List[str]] = None,
+    routing_policy: Optional[Mapping[str, Any]] = None,
+    task_complexity: str | None = None,
+    reasoning_effort: str | None = None,
+    max_cost_tier: int | None = None,
+    max_reasoning_effort: str | None = None,
+    max_fallbacks: int | None = None,
+    max_plan_cost_units: int | None = None,
     enable_embeddings: bool = False,
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2",
     pro_review: bool = False,
@@ -559,6 +770,14 @@ def run_once(
         max_roles=max_roles,
         context_max_chars=context_max_chars,
         agent_budget=agent_budget,
+        available_models=available_models,
+        routing_policy=routing_policy,
+        task_complexity=task_complexity,
+        reasoning_effort=reasoning_effort,
+        max_cost_tier=max_cost_tier,
+        max_reasoning_effort=max_reasoning_effort,
+        max_fallbacks=max_fallbacks,
+        max_plan_cost_units=max_plan_cost_units,
     )
     if pro_review and pro_review_recursive:
         result["pro_review"] = {
@@ -585,7 +804,18 @@ def run_once(
             timeout=pro_review_timeout,
         )
     result["todo_generation"] = run_todo_generation_phase(root)
-    result["execution"] = run_execution_phase(root)
+    result["execution"] = run_execution_phase(
+        root,
+        implementation_task_kind=implementation_task_kind,
+        agent_budget=agent_budget,
+        available_models=available_models,
+        routing_policy=routing_policy,
+        task_complexity=task_complexity,
+        reasoning_effort=reasoning_effort,
+        max_cost_tier=max_cost_tier,
+        max_reasoning_effort=max_reasoning_effort,
+        max_fallbacks=max_fallbacks,
+    )
     active = result["execution"].get("active_todo") if isinstance(result["execution"], dict) else None
     if active:
         todo_id = active.get("todo_id") if isinstance(active, dict) else None
@@ -618,7 +848,16 @@ def main() -> None:
     parser.add_argument("--critic-depth", choices=["minimal", "standard", "deep"], default="standard")
     parser.add_argument("--max-roles", type=int)
     parser.add_argument("--context-max-chars", type=int, default=1200)
-    parser.add_argument("--agent-budget", choices=["spark-first", "balanced", "deep"], default="spark-first")
+    parser.add_argument("--agent-budget", default="spark-first")
+    parser.add_argument("--routing-policy")
+    parser.add_argument("--available-model", action="append")
+    parser.add_argument("--implementation-task-kind")
+    parser.add_argument("--task-complexity")
+    parser.add_argument("--reasoning-effort")
+    parser.add_argument("--max-cost-tier", type=int)
+    parser.add_argument("--max-reasoning-effort")
+    parser.add_argument("--max-fallbacks", type=int)
+    parser.add_argument("--max-plan-cost-units", type=int)
     parser.add_argument("--embeddings", action="store_true")
     parser.add_argument("--no-embeddings", action="store_true")
     parser.add_argument("--embedding-model", default="sentence-transformers/all-MiniLM-L6-v2")
@@ -635,6 +874,17 @@ def main() -> None:
 
     root = Path(args.root).resolve()
     enable_embeddings = args.embeddings and not args.no_embeddings
+    routing_policy = load_routing_policy(args.routing_policy)
+    routing_args = {
+        "available_models": args.available_model,
+        "routing_policy": routing_policy,
+        "task_complexity": args.task_complexity,
+        "reasoning_effort": args.reasoning_effort,
+        "max_cost_tier": args.max_cost_tier,
+        "max_reasoning_effort": args.max_reasoning_effort,
+        "max_fallbacks": args.max_fallbacks,
+        "max_plan_cost_units": args.max_plan_cost_units,
+    }
     if args.phase == "once":
         result = run_once(
             root,
@@ -645,6 +895,8 @@ def main() -> None:
             max_roles=args.max_roles,
             context_max_chars=args.context_max_chars,
             agent_budget=args.agent_budget,
+            implementation_task_kind=args.implementation_task_kind,
+            **routing_args,
             enable_embeddings=enable_embeddings,
             embedding_model=args.embedding_model,
             pro_review=args.pro_review,
@@ -677,19 +929,38 @@ def main() -> None:
     elif args.phase == "first-run":
         result = build_first_run_action(root, args.prompt)
     elif args.phase == "preplan":
-        result = run_preplan_critique_phase(root, args.prompt or "preplan critique", critic_depth=args.critic_depth, max_roles=args.max_roles, context_max_chars=args.context_max_chars, agent_budget=args.agent_budget)
+        result = run_preplan_critique_phase(root, args.prompt or "preplan critique", critic_depth=args.critic_depth, max_roles=args.max_roles, context_max_chars=args.context_max_chars, agent_budget=args.agent_budget, **routing_args)
     elif args.phase == "todo-generation":
         result = run_todo_generation_phase(root)
     elif args.phase == "execution":
-        result = run_execution_phase(root)
+        result = run_execution_phase(
+            root,
+            implementation_task_kind=args.implementation_task_kind,
+            agent_budget=args.agent_budget,
+            available_models=args.available_model,
+            routing_policy=routing_policy,
+            task_complexity=args.task_complexity,
+            reasoning_effort=args.reasoning_effort,
+            max_cost_tier=args.max_cost_tier,
+            max_reasoning_effort=args.max_reasoning_effort,
+            max_fallbacks=args.max_fallbacks,
+        )
     elif args.phase == "validation":
         if not args.todo_id:
             raise SystemExit("--todo-id is required for validation phase")
-        result = run_validation_phase(root, args.todo_id, critic_depth=args.critic_depth, max_roles=args.max_roles, context_max_chars=args.context_max_chars, agent_budget=args.agent_budget)
+        result = run_validation_phase(root, args.todo_id, critic_depth=args.critic_depth, max_roles=args.max_roles, context_max_chars=args.context_max_chars, agent_budget=args.agent_budget, **routing_args)
     elif args.phase == "spark-review":
         if not args.todo_id:
             raise SystemExit("--todo-id is required for spark-review phase")
-        result = run_spark_review_phase(root, args.todo_id, args.prompt or "Fast simplification review for current diff.", context_max_chars=args.context_max_chars)
+        result = run_spark_review_phase(
+            root,
+            args.todo_id,
+            args.prompt or "Fast simplification review for current diff.",
+            context_max_chars=args.context_max_chars,
+            available_models=args.available_model,
+            routing_policy=routing_policy,
+            max_plan_cost_units=args.max_plan_cost_units,
+        )
     elif args.phase == "documentation":
         if not args.todo_id:
             raise SystemExit("--todo-id is required for documentation phase")
@@ -697,7 +968,7 @@ def main() -> None:
     elif args.phase == "improvement":
         if not args.todo_id:
             raise SystemExit("--todo-id is required for improvement phase")
-        result = run_improvement_phase(root, args.todo_id, args.prompt or "Review implementation quality, efficiency, accuracy, documentation, and maintainability after TODO implementation.", critic_depth=args.critic_depth, max_roles=args.max_roles, context_max_chars=args.context_max_chars, agent_budget=args.agent_budget)
+        result = run_improvement_phase(root, args.todo_id, args.prompt or "Review implementation quality, efficiency, accuracy, documentation, and maintainability after TODO implementation.", critic_depth=args.critic_depth, max_roles=args.max_roles, context_max_chars=args.context_max_chars, agent_budget=args.agent_budget, **routing_args)
     elif args.phase == "pro-review":
         result = run_pro_review_phase(
             root,

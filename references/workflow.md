@@ -85,9 +85,19 @@ accuracy/evaluation critic
 
 All subagents are critical-only. They return findings, not decisions.
 
+Before spawning, route each brief through `model_router.py`: derive capability,
+complexity, and reasoning requirements from the task profile; intersect those
+requirements with the caller-confirmed available models; then apply per-route
+and aggregate plan budgets. The bundled catalog uses Codex Spark for simple or
+structured work and GPT-5.6 `high`/`max` for additional logic or deep risk
+reasoning. An `unsupported`, `unavailable`, `budget_limited`, or
+`plan_budget_exceeded` route must stay with the main agent rather than being
+silently downgraded.
+
 Helper scripts:
 
 ```text
+model_router.py
 subagent_brief_builder.py
 critic_ledger.py
 ```
@@ -148,6 +158,12 @@ Per TODO:
 3. Implement the smallest complete vertical slice.
 4. Run validation commands.
 5. Use `systematic-debugging` or `debugging-and-error-recovery` if checks fail.
+
+The main agent may explicitly delegate a bounded execution slice. Route a
+mechanical/local slice as `simple-implementation` (Spark/`low`) and a slice that
+adds logic or cross-file design as `logic-design` (GPT-5.6/`high`). Include the
+emitted `contract: implementation` marker in the spawn payload. This exception
+does not apply to preplan, validation, review, or improvement critic briefs.
 
 Helper scripts:
 

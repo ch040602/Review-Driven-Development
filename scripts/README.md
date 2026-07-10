@@ -10,6 +10,7 @@ Each file is dependency-light and implements a bounded helper contract for the m
 | `data_profile.py` | `now_iso`, `detect_dialect`, `iter_delimited_rows`, `iter_jsonl_rows`, `profile_rows`, `profile_data_file`, `discover_data_files`, `build_data_profile_report` … | Data profiling for the `review-driven-development` data/CSV critic. |
 | `doc_sync_check.py` | `now_iso`, `filename_timestamp`, `path_exists`, `discover_docs`, `infer_targets_from_files`, `load_todo`, `infer_targets_for_todo`, `build_doc_sync_report` … | Documentation synchronization checker. |
 | `external_skill_registry.py` | `ExternalSkill`, `all_skills`, `skills_for_phase`, `required_skills`, `find_skill`, `install_hints`, `render_markdown`, `as_json` … | External skill registry for review-driven-development. |
+| `model_router.py` | `load_routing_policy`, `validate_routing_policy`, `route_task`, `route_role`, `build_spawn_plan`, `main` | Capability/complexity/reasoning/availability/budget model routing. |
 | `quality_gate.py` | `now_iso`, `filename_timestamp`, `load_json`, `normalize_commands`, `load_commands`, `select_commands`, `run_command`, `evaluate_results` … | Quality gate evidence helper for review-driven-development. |
 | `rdd_state.py` | `now_iso`, `filename_timestamp`, `resolve_root`, `state_path`, `initial_text_for`, `ensure_state`, `read_json`, `write_json` … | Project-local state helper for the review-driven-development skill. |
 | `requirement_analyzer.py` | `Option`, `RequirementPacket`, `summarize_prompt`, `extract_constraints`, `infer_language_options`, `build_method_options`, `build_existing_code_options`, `build_validation_options` … | Requirement analysis helper. |
@@ -34,6 +35,11 @@ python skills/review-driven-development/scripts/workflow_runner.py --root . --ph
 python skills/review-driven-development/scripts/workflow_runner.py --root . --phase semantic-search --query "quality gate completion"
 python skills/review-driven-development/scripts/workflow_runner.py --root . --phase role-map
 python skills/review-driven-development/scripts/workflow_runner.py --root . --phase validation --todo-id RDD-T-00000001 --agent-budget spark-first
+python skills/review-driven-development/scripts/model_router.py --list-models
+python skills/review-driven-development/scripts/model_router.py --phase execution --task-kind simple-implementation
+python skills/review-driven-development/scripts/model_router.py --phase execution --task-kind logic-design
+python skills/review-driven-development/scripts/workflow_runner.py --root . --phase execution --implementation-task-kind simple-implementation --available-model gpt-5.3-codex-spark --available-model gpt-5.6
+python skills/review-driven-development/scripts/model_router.py --phase preplan --role security-risk-critic --critic-depth deep --agent-budget deep
 python skills/review-driven-development/scripts/workflow_runner.py --root . --phase bootstrap
 python skills/review-driven-development/scripts/workflow_runner.py --root . --phase commands
 ```
@@ -56,4 +62,4 @@ python skills/review-driven-development/scripts/self_test.py
 pytest -q
 ```
 
-`self_test.py` verifies first-run detection, context cache/pack generation, semantic index generation, embedding/TF-IDF/fallback semantic search behavior, AGENTS bootstrap injection, command UX, accepted critic finding to TODO conversion, one active TODO, deferred validation/improvement until after implementation, quality-gate evidence, independent review record, documentation status, and TODO completion gates.
+`self_test.py` verifies first-run detection, context cache/pack generation, semantic index generation, embedding/TF-IDF/fallback semantic search behavior, AGENTS bootstrap injection, command UX, accepted critic finding to TODO conversion, one active TODO, deferred validation/improvement until after implementation, quality-gate evidence, independent review record, documentation status, and TODO completion gates. Pytest additionally covers the two-model GPT-5.6/Codex Spark catalog, high/max effort routing, explicit availability failures, and aggregate spawn-plan budgets.

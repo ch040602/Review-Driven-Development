@@ -111,12 +111,15 @@ Purpose: Compare dependency manifests before/after and block unjustified additio
 
 ## `model_router.py`
 
-Purpose: Map critic roles to custom-agent configs and manual spawn plans.
+Purpose: Select models and reasoning effort from a validated capability/complexity policy, runtime availability, and hard budgets; then build manual spawn plans.
 
 | Function/class | Intended implementation boundary |
 |---|---|
-| `route_role` | Return role, custom agent, model, sandbox, and escalation metadata. |
-| `build_spawn_plan` | Build manual spawn instructions from generated brief paths. |
+| `load_routing_policy` | Load and validate the bundled or caller-supplied JSON policy. |
+| `validate_routing_policy` | Reject incomplete model, task, effort, complexity, or budget definitions. |
+| `route_task` | Select the lowest-cost available candidate satisfying capability, complexity, reasoning, and per-route budget requirements. |
+| `route_role` | Map a critic role to a task profile and return route/status/escalation metadata. |
+| `build_spawn_plan` | Build manual spawn instructions and enforce the aggregate relative-cost budget. |
 | `main` | CLI entrypoint; never claim subagents executed. |
 
 ## `rdd_commands.py`
@@ -400,7 +403,7 @@ Purpose: Provide high-level orchestration preview and safe state setup that Code
 | `build_first_run_action` | Return the action the main agent should take for first-run setup. |
 | `run_preplan_critique_phase` | Write preplan critical-only subagent briefs. |
 | `run_todo_generation_phase` | Convert accepted findings into TODOs. |
-| `run_execution_phase` | Start the next TODO. |
+| `run_execution_phase` | Start the next TODO and optionally emit an explicit bounded implementation route. |
 | `run_validation_phase` | Prepare validation evidence and critical validation briefs. |
 | `run_documentation_phase` | Prepare documentation check report. |
 | `run_improvement_phase` | Write improvement critical-only subagent briefs. |

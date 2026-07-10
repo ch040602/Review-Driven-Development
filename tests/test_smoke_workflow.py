@@ -28,7 +28,7 @@ from todo_manager import (  # noqa: E402
     list_todos,
     update_documentation_status,
 )
-from workflow_runner import run_bootstrap_phase, run_commands_phase, run_overview_phase, run_role_map_phase, run_semantic_index_phase, run_semantic_search_phase, run_spark_review_phase, run_sync_phase, run_validation_phase  # noqa: E402
+from workflow_runner import run_bootstrap_phase, run_commands_phase, run_execution_phase, run_overview_phase, run_role_map_phase, run_semantic_index_phase, run_semantic_search_phase, run_spark_review_phase, run_sync_phase, run_validation_phase  # noqa: E402
 
 
 def run_cmd(*args: str) -> subprocess.CompletedProcess[str]:
@@ -286,12 +286,26 @@ def test_agent_tier_allocation_prefers_spark_and_escalates_risk() -> None:
         "preplan",
         inventory,
         critic_depth="deep",
-        agent_budget="balanced",
+        agent_budget="deep",
     )
 
     assert requirements.tier == "codex-spark"
     assert framework.tier == "codex-standard"
     assert security.tier == "codex-deep"
+
+
+def test_allocation_table_reports_budget_limited_routes_without_a_model() -> None:
+    rows = allocation_table_for_roles(
+        ["security-risk-critic"],
+        "preplan",
+        critic_depth="deep",
+        agent_budget="balanced",
+    )
+
+    assert rows[0]["route_status"] == "budget_limited"
+    assert rows[0]["agent_tier"] == "unroutable"
+    assert rows[0]["model"] == ""
+    assert rows[0]["required_reasoning_effort"] == "max"
 
 
 def test_simplification_critic_is_selected_and_routes_to_spark_agent() -> None:
@@ -331,6 +345,7 @@ def test_write_briefs_can_cap_roles_and_context_size() -> None:
     assert len(paths) == 1
     assert "[truncated for token budget]" in text
     assert "Recommended tier: `codex-spark`" in text
+    assert "Reasoning effort: `low`" in text
 
 
 def test_embedding_semantic_search_backend_can_rank_without_real_model(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -408,6 +423,56 @@ def test_workflow_runner_reports_agent_allocations_for_validation() -> None:
     assert result["agent_allocations"][0]["agent_tier"] == "codex-spark"
 
 
+def test_execution_phase_can_explicitly_route_a_bounded_implementation_slice() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        create_todo(root, "Implement local parser", acceptance_criteria=["parser test passes"])
+        result = run_execution_phase(
+            root,
+            implementation_task_kind="simple-implementation",
+            available_models=["gpt-5.3-codex-spark", "gpt-5.6"],
+        )
+
+    assert result["implementation_route"]["route_status"] == "selected"
+    assert result["implementation_route"]["model"] == "gpt-5.3-codex-spark"
+    assert result["implementation_route"]["reasoning_effort"] == "low"
+    assert result["implementation_route"]["contract"] == "implementation"
+
+
+def test_execution_phase_refuses_logic_design_when_gpt_56_is_unavailable() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        create_todo(root, "Design cross-file logic", acceptance_criteria=["integration test passes"])
+        result = run_execution_phase(
+            root,
+            implementation_task_kind="logic-design",
+            available_models=["gpt-5.3-codex-spark"],
+        )
+
+    assert result["implementation_route"]["route_status"] == "unavailable"
+    assert result["implementation_route"]["model"] == ""
+    assert "Do not spawn" in result["main_agent_next"]
+
+
+def test_workflow_runner_emits_availability_and_plan_budget_aware_spawn_plan() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        result = run_validation_phase(
+            root,
+            "RDD-T-00000001",
+            critic_depth="minimal",
+            max_roles=2,
+            available_models=["gpt-5.3-codex-spark"],
+            max_plan_cost_units=1,
+        )
+        spawn_plan_exists = Path(result["spawn_plan_path"]).exists()
+
+    assert spawn_plan_exists
+    assert result["spawn_plan"][0]["route_status"] == "selected"
+    assert result["spawn_plan"][0]["availability_source"] == "explicit"
+    assert result["spawn_plan"][1]["route_status"] == "plan_budget_exceeded"
+
+
 def test_workflow_runner_spark_review_writes_spawn_plan() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -415,7 +480,7 @@ def test_workflow_runner_spark_review_writes_spawn_plan() -> None:
 
         assert result["phase"] == "spark-review"
         assert result["spawn_plan"]
-        assert result["spawn_plan"][0]["custom_agent_name"] == "rdd_spark_critic"
+        assert result["spawn_plan"][0]["custom_agent_name"] == "rdd_spark_low_critic"
         assert Path(result["spawn_plan_path"]).exists()
 
 

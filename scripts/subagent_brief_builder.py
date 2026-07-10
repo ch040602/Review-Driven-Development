@@ -25,9 +25,9 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 try:
-    from .model_router import build_spawn_plan, route_role
+    from .model_router import build_spawn_plan, load_routing_policy, route_role
 except ImportError:  # pragma: no cover
-    from model_router import build_spawn_plan, route_role  # type: ignore
+    from model_router import build_spawn_plan, load_routing_policy, route_role  # type: ignore
 
 STATE_DIR = Path(".codex") / "review-driven-development"
 
@@ -80,35 +80,7 @@ CRITIC_DEPTH_LIMITS = {
     "standard": 4,
     "deep": 99,
 }
-AGENT_BUDGETS = {
-    "spark-first": "Prefer codex-spark for frequent structured checks; escalate only on concrete risk signals.",
-    "balanced": "Use codex-spark for narrow checks, codex-standard for cross-file or uncertain reasoning, and codex-deep for high-risk roles.",
-    "deep": "Prefer stronger subagents for broad or high-risk reviews while still allowing codex-spark for mechanical docs/tests checks.",
-}
-SPARK_FRIENDLY_ROLES = {
-    "requirements-critic",
-    "test-tdd-critic",
-    "documentation-critic",
-    "markdown-doc-context-critic",
-    "validation-runner-critic",
-    "maintainability-critic",
-    "quality-critic",
-    "greenfield-scope-critic",
-    "simplification-critic",
-}
-STANDARD_ROLES = {
-    "language-runtime-critic",
-    "existing-code-reuse-refactor-critic",
-    "source-driven-framework-critic",
-    "source-grounding-critic",
-    "performance-efficiency-critic",
-    "accuracy-evaluation-critic",
-}
-DEEP_RISK_ROLES = {
-    "architecture-critic",
-    "security-risk-critic",
-    "data-csv-critic",
-}
+AGENT_BUDGETS = {name: name for name in load_routing_policy()["budget_profiles"]}
 
 CRITICAL_CONTRACT = """You are a critical-only subagent for review-driven-development.
 Do not praise. Do not decide. Do not implement patches.
@@ -206,81 +178,48 @@ def agent_allocation_for_role(
     *,
     critic_depth: str = "standard",
     agent_budget: str = "spark-first",
+    available_models: Iterable[str] | None = None,
+    routing_policy: Mapping[str, Any] | None = None,
+    complexity: str | None = None,
+    reasoning_effort: str | None = None,
+    max_cost_tier: int | None = None,
+    max_reasoning_effort: str | None = None,
+    max_fallbacks: int | None = None,
 ) -> AgentAllocation:
-    """Choose a subagent intelligence tier from role and risk signals.
-
-    The returned tier is a routing hint for the main agent or external
-    orchestrator. It does not launch agents and does not weaken the critical-only
-    contract.
-    """
+    """Return a compatibility allocation view backed by the single router."""
 
     if critic_depth not in CRITIC_DEPTH_LIMITS:
         raise ValueError(f"Unknown critic depth: {critic_depth}. Expected one of {sorted(CRITIC_DEPTH_LIMITS)}")
-    if agent_budget not in AGENT_BUDGETS:
-        raise ValueError(f"Unknown agent budget: {agent_budget}. Expected one of {sorted(AGENT_BUDGETS)}")
-
-    has_security_signal = bool(inventory and inventory.get("needs_security_critic"))
-    has_data_signal = bool(inventory and inventory.get("requires_data_critic"))
-    high_risk_role = role in DEEP_RISK_ROLES
-    broad_reasoning_role = role in STANDARD_ROLES or role == "architecture-critic"
-    structured_role = role in SPARK_FRIENDLY_ROLES
-
-    if agent_budget == "deep":
-        if high_risk_role or critic_depth == "deep":
-            return AgentAllocation(
-                "codex-deep",
-                "deep budget or high-risk role requires stronger cross-file reasoning",
-                "Already escalated; reduce only after evidence proves the risk is local and mechanical.",
-            )
-        if structured_role:
-            return AgentAllocation(
-                "codex-spark",
-                "structured checklist role remains cheap even in deep budget",
-                "Escalate if it reports ambiguity, missing evidence, or cross-module coupling.",
-            )
-        return AgentAllocation(
-            "codex-standard",
-            "deep budget keeps non-mechanical reasoning above spark",
-            "Escalate to codex-deep if blocker/high uncertainty remains after the first pass.",
-        )
-
-    if agent_budget == "balanced":
-        if high_risk_role and (critic_depth == "deep" or has_security_signal or has_data_signal):
-            return AgentAllocation(
-                "codex-deep",
-                "balanced budget escalates concrete security/data/architecture risk",
-                "Reduce only when the inventory signal is false positive.",
-            )
-        if structured_role:
-            return AgentAllocation(
-                "codex-spark",
-                "structured local checklist can run frequently at low cost",
-                "Escalate if the checklist finds unresolved high-risk ambiguity.",
-            )
-        return AgentAllocation(
-            "codex-standard",
-            "balanced budget uses standard reasoning for non-mechanical review",
-            "Escalate to codex-deep for broad migration, security, data, or architecture blockers.",
-        )
-
-    # spark-first
-    if high_risk_role and critic_depth == "deep":
-        return AgentAllocation(
-            "codex-deep",
-            "deep critic depth overrides spark-first for high-risk roles",
-            "Drop to codex-standard only if the main agent records a narrower risk boundary.",
-        )
-    if high_risk_role or broad_reasoning_role:
-        return AgentAllocation(
-            "codex-standard",
-            "role or inventory signal needs more reasoning than a frequent checklist pass",
-            "Escalate to codex-deep if security/data/architecture risk remains unresolved.",
-        )
-    return AgentAllocation(
-        "codex-spark",
-        "default low-cost tier for frequent structured critical checks",
-        "Escalate if findings mention blocker/high severity, unclear requirements, or cross-file coupling.",
+    budget_names = (routing_policy or load_routing_policy())["budget_profiles"]
+    if agent_budget not in budget_names:
+        raise ValueError(f"Unknown agent budget: {agent_budget}. Expected one of {sorted(budget_names)}")
+    _ = inventory  # Inventory selects roles; the routing policy selects models.
+    route = route_role(
+        role,
+        phase=phase,
+        critic_depth=critic_depth,
+        agent_budget=agent_budget,
+        available_models=available_models,
+        routing_policy=routing_policy,
+        complexity=complexity,
+        reasoning_effort=reasoning_effort,
+        max_cost_tier=max_cost_tier,
+        max_reasoning_effort=max_reasoning_effort,
+        max_fallbacks=max_fallbacks,
     )
+    return _allocation_from_route(route)
+
+
+def _allocation_from_route(route: Mapping[str, Any]) -> AgentAllocation:
+    """Convert router metadata to the legacy allocation shape."""
+
+    selected = route.get("route_status") == "selected"
+    tier = str(route.get("agent_tier") or "unroutable")
+    reason = str(route.get("selection_reason", "")) if selected else (
+        f"{route.get('route_status')}: {route.get('fallback_action')}"
+    )
+    escalate_when = ", ".join(str(item) for item in route.get("escalate_when", []))
+    return AgentAllocation(tier, reason, escalate_when)
 
 
 def allocation_table_for_roles(
@@ -290,33 +229,50 @@ def allocation_table_for_roles(
     *,
     critic_depth: str = "standard",
     agent_budget: str = "spark-first",
-) -> List[Dict[str, str]]:
+    available_models: Iterable[str] | None = None,
+    routing_policy: Mapping[str, Any] | None = None,
+    complexity: str | None = None,
+    reasoning_effort: str | None = None,
+    max_cost_tier: int | None = None,
+    max_reasoning_effort: str | None = None,
+    max_fallbacks: int | None = None,
+) -> List[Dict[str, Any]]:
     """Return routing hints for a role list."""
 
-    rows: List[Dict[str, str]] = []
+    rows: List[Dict[str, Any]] = []
     for role in roles:
-        allocation = agent_allocation_for_role(
-            role,
-            phase,
-            inventory,
-            critic_depth=critic_depth,
-            agent_budget=agent_budget,
-        )
         route = route_role(
             role,
             phase=phase,
             critic_depth=critic_depth,
             agent_budget=agent_budget,
+            available_models=available_models,
+            routing_policy=routing_policy,
+            complexity=complexity,
+            reasoning_effort=reasoning_effort,
+            max_cost_tier=max_cost_tier,
+            max_reasoning_effort=max_reasoning_effort,
+            max_fallbacks=max_fallbacks,
         )
+        allocation = _allocation_from_route(route)
         rows.append({
             "role": role,
+            "route_status": route["route_status"],
+            "task_kind": route["task_kind"],
             "agent_tier": allocation.tier,
             "custom_agent_name": route["custom_agent_name"],
             "model": route["model"],
+            "reasoning_effort": route["reasoning_effort"],
+            "required_reasoning_effort": route["required_reasoning_effort"],
+            "complexity": route["complexity"],
+            "required_capabilities": route["required_capabilities"],
             "sandbox": route["sandbox"],
             "reason": allocation.reason,
             "escalate_when": allocation.escalate_when,
             "escalate_to": str(route.get("escalate_to", "")),
+            "fallbacks": route["fallbacks"],
+            "estimated_cost_units": route["estimated_cost_units"],
+            "budget": route["budget"],
         })
     return rows
 
@@ -342,16 +298,30 @@ def build_brief(
     context_max_chars: int = 1200,
     critic_depth: str = "standard",
     agent_budget: str = "spark-first",
+    available_models: Iterable[str] | None = None,
+    routing_policy: Mapping[str, Any] | None = None,
+    complexity: str | None = None,
+    reasoning_effort: str | None = None,
+    max_cost_tier: int | None = None,
+    max_reasoning_effort: str | None = None,
+    max_fallbacks: int | None = None,
 ) -> str:
     """Build a Markdown prompt for one critical-only subagent."""
     spec = get_role_spec(role, phase)
-    allocation = agent_allocation_for_role(
+    route = route_role(
         role,
-        phase,
-        inventory,
+        phase=phase,
         critic_depth=critic_depth,
         agent_budget=agent_budget,
+        available_models=available_models,
+        routing_policy=routing_policy,
+        complexity=complexity,
+        reasoning_effort=reasoning_effort,
+        max_cost_tier=max_cost_tier,
+        max_reasoning_effort=max_reasoning_effort,
+        max_fallbacks=max_fallbacks,
     )
+    allocation = _allocation_from_route(route)
     inventory_note = ""
     if inventory:
         inventory_note = "\n## Inventory hints\n\n" + json.dumps({
@@ -384,7 +354,13 @@ def build_brief(
 ## Agent allocation hint
 
 - Recommended tier: `{allocation.tier}`
-- Custom agent: `{route_role(role, phase=phase, critic_depth=critic_depth, agent_budget=agent_budget)["custom_agent_name"]}`
+- Route status: `{route["route_status"]}`
+- Model: `{route["model"] or "N/A"}`
+- Reasoning effort: `{route["reasoning_effort"] or "N/A"}`
+- Required capabilities: `{", ".join(route["required_capabilities"])}`
+- Complexity: `{route["complexity"]}`
+- Custom agent: `{route["custom_agent_name"] or "N/A"}`
+- Budget: `{route["budget"]["profile"]}` (reasoning ceiling `{route["budget"]["max_reasoning_effort"]}`)
 - Reason: {allocation.reason}
 - Escalate when: {allocation.escalate_when}
 
@@ -417,10 +393,18 @@ def write_briefs(
     max_roles: int | None = None,
     context_max_chars: int = 1200,
     agent_budget: str = "spark-first",
+    available_models: Iterable[str] | None = None,
+    routing_policy: Mapping[str, Any] | None = None,
+    complexity: str | None = None,
+    reasoning_effort: str | None = None,
+    max_cost_tier: int | None = None,
+    max_reasoning_effort: str | None = None,
+    max_fallbacks: int | None = None,
 ) -> List[Path]:
     """Write critical-only briefs for one phase."""
-    if agent_budget not in AGENT_BUDGETS:
-        raise ValueError(f"Unknown agent budget: {agent_budget}. Expected one of {sorted(AGENT_BUDGETS)}")
+    budget_names = (routing_policy or load_routing_policy())["budget_profiles"]
+    if agent_budget not in budget_names:
+        raise ValueError(f"Unknown agent budget: {agent_budget}. Expected one of {sorted(budget_names)}")
     inventory = load_inventory(root)
     selected_roles = (
         list(roles)
@@ -442,6 +426,13 @@ def write_briefs(
                 context_max_chars=context_max_chars,
                 critic_depth=critic_depth,
                 agent_budget=agent_budget,
+                available_models=available_models,
+                routing_policy=routing_policy,
+                complexity=complexity,
+                reasoning_effort=reasoning_effort,
+                max_cost_tier=max_cost_tier,
+                max_reasoning_effort=max_reasoning_effort,
+                max_fallbacks=max_fallbacks,
             ),
             encoding="utf-8",
         )
@@ -449,10 +440,38 @@ def write_briefs(
     return paths
 
 
-def write_spawn_plan(root: Path, phase: str, brief_paths: Iterable[Path], *, critic_depth: str = "standard", agent_budget: str = "spark-first") -> Path:
+def write_spawn_plan(
+    root: Path,
+    phase: str,
+    brief_paths: Iterable[Path],
+    *,
+    critic_depth: str = "standard",
+    agent_budget: str = "spark-first",
+    available_models: Iterable[str] | None = None,
+    routing_policy: Mapping[str, Any] | None = None,
+    complexity: str | None = None,
+    reasoning_effort: str | None = None,
+    max_cost_tier: int | None = None,
+    max_reasoning_effort: str | None = None,
+    max_fallbacks: int | None = None,
+    max_plan_cost_units: int | None = None,
+) -> Path:
     """Write a manual custom-agent spawn plan for generated briefs."""
 
-    plan = build_spawn_plan(brief_paths, phase=phase, critic_depth=critic_depth, agent_budget=agent_budget)
+    plan = build_spawn_plan(
+        brief_paths,
+        phase=phase,
+        critic_depth=critic_depth,
+        agent_budget=agent_budget,
+        available_models=available_models,
+        routing_policy=routing_policy,
+        complexity=complexity,
+        reasoning_effort=reasoning_effort,
+        max_cost_tier=max_cost_tier,
+        max_reasoning_effort=max_reasoning_effort,
+        max_fallbacks=max_fallbacks,
+        max_plan_cost_units=max_plan_cost_units,
+    )
     directory = root / STATE_DIR / "subagent-briefs"
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{phase}-spawn-plan-{now_stamp()}.json"
@@ -503,11 +522,29 @@ def main() -> None:
     parser.add_argument("--critic-depth", choices=sorted(CRITIC_DEPTH_LIMITS), default="standard")
     parser.add_argument("--max-roles", type=int)
     parser.add_argument("--context-max-chars", type=int, default=1200)
-    parser.add_argument("--agent-budget", choices=sorted(AGENT_BUDGETS), default="spark-first")
+    parser.add_argument("--agent-budget", default="spark-first")
+    parser.add_argument("--routing-policy")
+    parser.add_argument("--available-model", action="append")
+    parser.add_argument("--complexity")
+    parser.add_argument("--reasoning-effort")
+    parser.add_argument("--max-cost-tier", type=int)
+    parser.add_argument("--max-reasoning-effort")
+    parser.add_argument("--max-fallbacks", type=int)
+    parser.add_argument("--max-plan-cost-units", type=int)
     parser.add_argument("--emit-agent-instructions", action="store_true", help="Emit allocation metadata for generated briefs")
     parser.add_argument("--emit-spawn-plan", action="store_true", help="Write and emit a manual custom-agent spawn plan")
     parser.add_argument("--emit-agent-files", action="store_true", help="Emit expected .codex/agents config file paths")
     args = parser.parse_args()
+    routing_policy = load_routing_policy(args.routing_policy)
+    routing_args = {
+        "available_models": args.available_model,
+        "routing_policy": routing_policy,
+        "complexity": args.complexity,
+        "reasoning_effort": args.reasoning_effort,
+        "max_cost_tier": args.max_cost_tier,
+        "max_reasoning_effort": args.max_reasoning_effort,
+        "max_fallbacks": args.max_fallbacks,
+    }
     paths = write_briefs(
         Path(args.root).resolve(),
         args.phase,
@@ -518,6 +555,7 @@ def main() -> None:
         max_roles=args.max_roles,
         context_max_chars=args.context_max_chars,
         agent_budget=args.agent_budget,
+        **routing_args,
     )
     if args.emit_agent_instructions or args.emit_spawn_plan or args.emit_agent_files:
         roles = [path.stem for path in paths]
@@ -529,6 +567,7 @@ def main() -> None:
                 load_inventory(Path(args.root).resolve()),
                 critic_depth=args.critic_depth,
                 agent_budget=args.agent_budget,
+                **routing_args,
             )
         if args.emit_spawn_plan:
             payload["spawn_plan_path"] = str(write_spawn_plan(
@@ -537,9 +576,12 @@ def main() -> None:
                 paths,
                 critic_depth=args.critic_depth,
                 agent_budget=args.agent_budget,
+                max_plan_cost_units=args.max_plan_cost_units,
+                **routing_args,
             ))
         if args.emit_agent_files:
             payload["agent_files"] = [
+                ".codex/agents/rdd-spark-low-critic.toml",
                 ".codex/agents/rdd-spark-critic.toml",
                 ".codex/agents/rdd-standard-critic.toml",
                 ".codex/agents/rdd-deep-critic.toml",
